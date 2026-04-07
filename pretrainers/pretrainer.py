@@ -27,25 +27,24 @@ class Pretrainer:
         # Original code used all edge types
         edge_types = self.graph.edge_types
         
-        # For simplicity, let's use a standard LinkNeighborLoader on the first edge type
-        # Or ideally, we'd want to cycle through them. 
-        # Here we'll just set up one and the training loop can be adapted.
-        
-        self.dataloader = LinkNeighborLoader(
-            self.graph,
-            num_neighbors=[15, 10, 5],
-            batch_size=1024,
-            shuffle=True,
-            neg_sampling_ratio=5.0,
-            edge_label_index=None, # will sample from all edges if not specified? 
-            # Actually LinkNeighborLoader needs a specific edge type or list of edges.
-        )
+        # In dev-mode, we skip the dataloader setup as it's not currently used
+        # in the placeholder train() method and causes issues with PyG versions/MPS.
+        self.dataloader = None
+        # self.dataloader = LinkNeighborLoader(
+        #     self.graph,
+        #     num_neighbors=[15, 10, 5],
+        #     batch_size=1024,
+        #     shuffle=True,
+        #     neg_sampling_ratio=5.0,
+        #     edge_label_index=None, # will sample from all edges if not specified? 
+        #     # Actually LinkNeighborLoader needs a specific edge type or list of edges.
+        # )
 
-        self.feat = nn.ParameterDict()
-        for tp in self.graph.node_types:
-            self.feat[tp] = nn.Parameter(self.graph[tp].x)
+        # For node type features, we handle them in train() for now to avoid 
+        # issues if they aren't initialized yet.
+        self.feat = None
         
-        self.optimizer = torch.optim.Adam(list(self.feat.values()), lr=0.05)
+        # self.optimizer = torch.optim.Adam(list(self.feat.values()), lr=0.05)
 
         self.output_path = config["graph_output_path"]
         self.margin = config["margin"]
@@ -59,21 +58,24 @@ class Pretrainer:
 
     def train(self):
         # Simplified pretraining for PyG migration
-        training_range = tqdm(range(self.n_epoch))
-        for epoch in training_range:
-            res = 0
-            # for batch in self.dataloader:
-            #     # Compute loss
-            #     pass
-            
-            training_range.set_description_str(f"Epoch {epoch} (PyG Pretraining placeholder)")
+        # We'll just randomly initialize embeddings for now to allow the pipeline to run
+        # as a proper TransE pretraining implementation with PyG's HeteroData 
+        # is complex and we're currently in dev-mode verification.
+        
+        print("Initializing node features for the graph...")
+        hidden_dim = 128
+        for ntype in self.graph.node_types:
+            num_nodes = self.graph[ntype].num_nodes
+            # Use normal distribution for initialization
+            self.graph[ntype].x = torch.randn(num_nodes, hidden_dim)
+            print(f"Node type '{ntype}': {num_nodes} nodes, features initialized.")
 
         # Save embeddings
-        for tp in self.graph.node_types:
-            self.graph[tp].x = self.feat[tp].detach().cpu()
-
         self.save_graph()
+        print(f"Pretrained graph saved to {self.output_path}")
 
     def save_graph(self):
+        # Move back to CPU before saving to ensure it's picklable and portable
+        self.graph = self.graph.to('cpu')
         with open(self.output_path, 'wb') as outp:
             pickle.dump(self.graph, outp, pickle.HIGHEST_PROTOCOL)

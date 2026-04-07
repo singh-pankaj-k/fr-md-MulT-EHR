@@ -123,6 +123,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
             dropout=config_gnn["feat_drop"]
         )
     elif gnn_name == "HGT":
+        # Pass labels to help calculate task-specific output dimensions if needed
         return HGT(
             metadata=metadata,
             n_inp=config_gnn["in_dim"],

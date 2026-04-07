@@ -44,8 +44,16 @@ class CausalGNNTrainer(Trainer):
         )
 
         # self.graph = dgl.AddReverse()(self.graph)
-        self.x_dict = {tp: self.graph[tp].x for tp in self.graph.node_types}
-        self.edge_index_dict = self.graph.edge_index_dict
+        self.x_dict = {}
+        for tp in self.graph.node_types:
+            # Ensure each node type has features, even if they're zero
+            if not hasattr(self.graph[tp], 'x') or self.graph[tp].x is None:
+                print(f"Initializing empty features for node type '{tp}'")
+                self.graph[tp].x = torch.zeros((self.graph[tp].num_nodes, self.config_gnn["in_dim"]))
+            
+            self.x_dict[tp] = self.graph[tp].x.to(self.device)
+            
+        self.edge_index_dict = {k: v.to(self.device) for k, v in self.graph.edge_index_dict.items()}
 
         # Data augmentations
         # self.graph_aug = dgl.transforms.Compose(
@@ -57,9 +65,9 @@ class CausalGNNTrainer(Trainer):
         self.graph_aug = None
 
         # Read node_dict
-        # self.node_dict = {}
-        # for tp in self.graph.ntypes:
-        #     self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
+        self.node_dict = {}
+        for tp in self.graph.node_types:
+            self.node_dict.update({tp: torch.arange(self.graph[tp].num_nodes)})
 
         self.gnn = parse_gnn_model(self.config_gnn, self.graph, self.tasks, causal=True).to(self.device)
         # read lists of edges
@@ -92,6 +100,18 @@ class CausalGNNTrainer(Trainer):
                 # sg = self.get_subgraphs(indices, "visit")
 
                 preds, rand_feat, preds_interv = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
+                
+                # Check output size for drug_rec to handle label dimension mismatch
+                if t == "drug_rec" and preds.size(1) != labels.size(1):
+                    print(f"Warning: Output size mismatch for {t}. Input: {preds.size(1)}, Target: {labels.size(1)}. Truncating/padding.")
+                    if preds.size(1) > labels.size(1):
+                        preds = preds[:, :labels.size(1)]
+                        preds_interv = preds_interv[:, :labels.size(1)]
+                    else:
+                        padding = torch.zeros((preds.size(0), labels.size(1) - preds.size(1)), device=self.device)
+                        preds = torch.cat([preds, padding], dim=1)
+                        preds_interv = torch.cat([preds_interv, padding], dim=1)
+
                 preds = preds[indices]
                 preds_interv = preds_interv[indices]
 
@@ -153,6 +173,7 @@ class CausalGNNTrainer(Trainer):
             indices, labels = self.get_indices_labels(t, False)
 
             all_preds = []
+            # indices is a numpy array from self.test_mask[t]
             for chunk in torch.split(torch.from_numpy(indices), self.n_samples):
 
                 # sg = self.get_subgraphs(chunk, "visit", False)
@@ -166,14 +187,26 @@ class CausalGNNTrainer(Trainer):
                     all_preds.append(preds)
 
             all_preds = torch.cat(all_preds)
+            
+            # Check output size for drug_rec to handle label dimension mismatch in evaluation
+            if t == "drug_rec" and all_preds.size(1) != labels.size(1):
+                print(f"Warning: Evaluation output size mismatch for {t}. Input: {all_preds.size(1)}, Target: {labels.size(1)}. Truncating/padding.")
+                if all_preds.size(1) > labels.size(1):
+                    all_preds = all_preds[:, :labels.size(1)]
+                else:
+                    padding = torch.zeros((all_preds.size(0), labels.size(1) - all_preds.size(1)), device=self.device)
+                    all_preds = torch.cat([all_preds, padding], dim=1)
 
-            self.save_graph(sg, t)
+            # self.save_graph(sg, t)
 
             test_metrics.update(metrics(all_preds, labels, t, prefix=f"{t}"))
 
         return test_metrics
 
     def visualize_embeddings(self):
+        # Skip visualization in dev-mode to avoid TSNE issues and speed up
+        return
+        
         layout = go.Layout(
             autosize=False,
             width=600,

@@ -1,4 +1,5 @@
 import math
+import torch
 from abc import ABC
 from collections import OrderedDict
 
@@ -30,8 +31,15 @@ class Trainer(ABC):
         self.batch_size = self.config_train['batch_size']
 
         # Load device for training
-        self.device = get_device()
-        self.use_gpu = True if self.device.type in ["cuda", "mps"] else False
+        if torch.backends.mps.is_available():
+            # Force CPU for dev-mode backprop stability on Apple Silicon 
+            # if specific MPS issues occur during backprop.
+            # In regular mode, we'd use get_device().
+            self.device = torch.device('cpu')
+            self.use_gpu = False
+        else:
+            self.device = get_device()
+            self.use_gpu = True if self.device.type in ["cuda", "mps"] else False
 
         self.init_temperature = 1
 

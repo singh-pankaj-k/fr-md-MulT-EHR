@@ -11,32 +11,10 @@ def main(config_file="configs/construct_graph/MIMIC4.yml"):
         config = yaml.load(f, loader)
         print(f"Loaded configs from {opt_path}")
 
+    # Set dev=True in the config
+    config["dev"] = True
+    
     graph_constructor = GraphConstructor(config)
-    
-    # Patch load_mimic to use dev=True for pyhealth datasets
-    original_load_mimic = graph_constructor.load_mimic
-    
-    def load_mimic_dev():
-        from pyhealth.datasets import MIMIC3Dataset, MIMIC4Dataset
-        raw_path = graph_constructor.config_graph["raw"]
-        if "mimiciii" in raw_path:
-            graph_constructor.dataset = MIMIC3Dataset(
-                root=raw_path,
-                tables=["DIAGNOSES_ICD", "PROCEDURES_ICD", "PRESCRIPTIONS", "LABEVENTS"],
-                code_mapping={},
-                dev=True,  # Set dev=True for small fraction of data
-            )
-        elif "mimiciv" in raw_path:
-            graph_constructor.dataset = MIMIC4Dataset(
-                root=raw_path,
-                tables=["diagnoses_icd", "procedures_icd", "prescriptions", "labevents"],
-                code_mapping={},
-                dev=True,  # Set dev=True for small fraction of data
-            )
-        else:
-            raise NotImplementedError
-    
-    graph_constructor.load_mimic = load_mimic_dev
     
     print("Starting graph construction in dev mode...")
     graph_constructor.load_mimic()

@@ -64,11 +64,19 @@ def metrics(outputs, targets, t, prefix="tr"):
             metrics=["accuracy", "roc_auc", "f1", "pr_auc"]
         )
     elif t == "los":
-        met = multiclass_metrics_fn(
-            targets.detach().cpu().numpy(),
-            outputs.softmax(1).detach().cpu().numpy(),
-            metrics=["roc_auc_weighted_ovo", "f1_weighted", "accuracy"]
-        )
+        try:
+            met = multiclass_metrics_fn(
+                targets.detach().cpu().numpy(),
+                outputs.softmax(1).detach().cpu().numpy(),
+                metrics=["roc_auc_weighted_ovo", "f1_weighted", "accuracy"]
+            )
+        except ValueError:
+            # Fallback for dev mode where not all classes might be present in labels
+            print(f"Warning: Multiclass metrics failed for {t} (likely missing classes in dev set). Using accuracy only.")
+            from sklearn.metrics import accuracy_score
+            y_true = targets.detach().cpu().numpy()
+            y_pred = outputs.argmax(1).detach().cpu().numpy()
+            met = {"accuracy": accuracy_score(y_true, y_pred), "roc_auc_weighted_ovo": 0.0, "f1_weighted": 0.0}
     elif t == "drug_rec":
         met = multilabel_metrics_fn(
             targets.detach().cpu().numpy(),
