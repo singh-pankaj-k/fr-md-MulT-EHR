@@ -17,5 +17,5 @@ This directory contains YAML configuration files used to define hyperparameters,
 You can specify a configuration file when running `main.py`:
 
 ```bash
-python main.py --config configs/HGT_MT_MIMIC3.yml
+python main.py --config configs/HGT_MT_MIMIC4.yml
 ```

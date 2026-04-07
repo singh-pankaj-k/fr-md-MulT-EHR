@@ -81,7 +81,7 @@ def benchmark_dropouts(config):
         0.1, 0.2, 0.3, 0.4, 0.5, 0.6
     ]:
         config["GNN"]["feat_drop"] = dp
-        config["name"] = f"HGT_MTCausal_MIMIC3_RMDL_dp{dp}"
+        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_dp{dp}"
         dataset_name = config["datasets"]["name"]
         config["checkpoint"]["path"] = f"./checkpoints/Dropout_ablation/{dataset_name}/{dp}/"
         config["logging"]["tags"] += ["abl_dropout"]
@@ -97,7 +97,7 @@ def benchmark_hidden_dim(config):
         16, 32, 64, 128, 256
     ]:
         config["GNN"]["hidden_dim"] = dim
-        config["name"] = f"HGT_MTCausal_MIMIC3_RMDL_dim{dim}"
+        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_dim{dim}"
         dataset_name = config["datasets"]["name"]
         config["checkpoint"]["path"] = f"./checkpoints/Hidden_Dim_ablation/{dataset_name}/{dim}/"
         config["logging"]["tags"] += ["abl_dim"]
@@ -113,7 +113,7 @@ def benchmark_reg(config):
         0.00005, 0.0001, 0.0005, 0.001, 0.01, 0.1, 1
     ]:
         config["train"]["reg"] = reg
-        config["name"] = f"HGT_MTCausal_MIMIC3_RMDL_reg{reg}"
+        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_reg{reg}"
         dataset_name = config["datasets"]["name"]
         config["checkpoint"]["path"] = f"./checkpoints/Reg_Coeff_ablation/{dataset_name}/{reg}/"
         config["logging"]["tags"] += ["abl_reg"]
@@ -129,7 +129,7 @@ random.seed(seed)
 torch.manual_seed(seed)
 
 # config_file = "Baselines_MIMIC4.yml"
-config_file = "HGT_Causal_MIMIC3.yml"
+config_file = "HGT_Causal_MIMIC4.yml"
 config_path = f"./configs/{config_file}"
 
 with open(config_path, mode='r') as f:
