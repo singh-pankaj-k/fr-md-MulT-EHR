@@ -1,4 +1,4 @@
-raw: "physionet.org/mimiciii/"
+raw: "data/root/dev_mimiciii/"
 dataset_name: "mimic3_dp"  # d: +diagnosis table; p: + procedure table
 processed_path: "./data/mimic3_objects/"
 graph_output_path: "./data/graphs/"
