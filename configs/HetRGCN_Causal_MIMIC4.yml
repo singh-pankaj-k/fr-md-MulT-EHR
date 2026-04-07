@@ -48,4 +48,4 @@ logging:
     "MIMIC4",
     "MT"
   ]
-  mode: online # offline, disabled, online
+  mode: disabled # offline, disabled, online
