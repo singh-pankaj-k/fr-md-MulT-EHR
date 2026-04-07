@@ -43,6 +43,13 @@ class CausalGNNTrainer(Trainer):
             graph_path, labels_path, pretrained=pretrained
         )
 
+        # Update GNN out_dim based on the number of drugs in the labels
+        if "drug_rec" in self.tasks and "all_drugs" in self.labels:
+            actual_n_drugs = len(self.labels["all_drugs"])
+            if self.config_gnn["out_dim"] != actual_n_drugs:
+                print(f"Updating GNN out_dim from {self.config_gnn['out_dim']} to {actual_n_drugs} to match drug vocabulary.")
+                self.config_gnn["out_dim"] = actual_n_drugs
+
         # self.graph = dgl.AddReverse()(self.graph)
         self.x_dict = {}
         for tp in self.graph.node_types:
@@ -105,16 +112,6 @@ class CausalGNNTrainer(Trainer):
                 if labels.dim() < 2 and t == "drug_rec":
                     # skip drug_rec if labels are empty
                     continue
-
-                if t == "drug_rec" and preds.size(1) != labels.size(1):
-                    print(f"Warning: Output size mismatch for {t}. Input: {preds.size(1)}, Target: {labels.size(1)}. Truncating/padding.")
-                    if preds.size(1) > labels.size(1):
-                        preds = preds[:, :labels.size(1)]
-                        preds_interv = preds_interv[:, :labels.size(1)]
-                    else:
-                        padding = torch.zeros((preds.size(0), labels.size(1) - preds.size(1)), device=self.device)
-                        preds = torch.cat([preds, padding], dim=1)
-                        preds_interv = torch.cat([preds_interv, padding], dim=1)
 
                 preds = preds[indices]
                 preds_interv = preds_interv[indices]
@@ -195,15 +192,6 @@ class CausalGNNTrainer(Trainer):
 
             all_preds = torch.cat(all_preds)
             
-            # Check output size for drug_rec to handle label dimension mismatch in evaluation
-            if t == "drug_rec" and all_preds.size(1) != labels.size(1):
-                print(f"Warning: Evaluation output size mismatch for {t}. Input: {all_preds.size(1)}, Target: {labels.size(1)}. Truncating/padding.")
-                if all_preds.size(1) > labels.size(1):
-                    all_preds = all_preds[:, :labels.size(1)]
-                else:
-                    padding = torch.zeros((all_preds.size(0), labels.size(1) - all_preds.size(1)), device=self.device)
-                    all_preds = torch.cat([all_preds, padding], dim=1)
-
             # self.save_graph(sg, t)
 
             test_metrics.update(metrics(all_preds, labels, t, prefix=f"{t}"))

@@ -35,6 +35,13 @@ class GNNTrainer(Trainer):
         entity_mapping = self.config_data["entity_mapping"]
         self.graph, self.labels, self.train_mask, self.test_mask = load_graph(graph_path, labels_path)
 
+        # Update GNN out_dim based on the number of drugs in the labels
+        if "drug_rec" in self.tasks and "all_drugs" in self.labels:
+            actual_n_drugs = len(self.labels["all_drugs"])
+            if self.config_gnn["out_dim"] != actual_n_drugs:
+                print(f"Updating GNN out_dim from {self.config_gnn['out_dim']} to {actual_n_drugs} to match drug vocabulary.")
+                self.config_gnn["out_dim"] = actual_n_drugs
+
         # PyG: No need for dgl.AddReverse(), it's usually handled by adding reverse edges to HeteroData or during construction
         # If reverse edges are needed and not in the graph, we can use T.ToUndirected()
 
