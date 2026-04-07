@@ -63,3 +63,7 @@ var/
 /checkpoints/Hidden_Dim_ablation/mimic4/256/model_v2.pt
 /checkpoints/Hidden_Dim_ablation/mimic4/256/training_stats.json
 /checkpoints/Hidden_Dim_ablation/mimic4/256/version.txt
+/benchmark/plots/hidden_dim_ablation_auc.png
+/benchmark/plots/model_comparison_auc.png
+/benchmark/aggregated_results.csv
+/benchmark/summary_report.md

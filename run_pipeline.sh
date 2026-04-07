@@ -36,10 +36,13 @@ python run_train.py HGT_Causal_MIMIC4.yml
 
 # 4. Benchmark and Obtain Results
 echo ""
-echo "Step 4: Running benchmarks..."
+echo "Step 4: Running benchmarks and generating report..."
 # This runs the benchmarking logic defined in benchmark.py
 # Note: You might want to edit benchmark.py to select specific benchmarks to run.
 python benchmark.py
+
+# Generate final summary report and visualizations
+python generate_benchmark_report.py
 
 echo ""
 echo "================================================================"
