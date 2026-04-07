@@ -13,13 +13,21 @@ def aggregate_results(checkpoints_dir='checkpoints'):
         folder = stats_file.parent
         # Try to infer model, dataset, task/ablation from path
         # Expected paths: 
-        # checkpoints/{Model}/{Dataset}/{Task}/training_stats.json
-        # checkpoints/GNN_ablation/{Dataset}/{Archi}/training_stats.json
-        # checkpoints/Hidden_Dim_ablation/{Dataset}/{Dim}/training_stats.json
+        # checkpoints/{Model_Type}/training_stats.json (where Model_Type contains Dataset)
+        # checkpoints/{Ablation_Type}/{Dataset}/{Detail}/training_stats.json
         
         parts = folder.relative_to(checkpoints_path).parts
         model_type = parts[0]
         
+        # Determine dataset and detail from path parts
+        if model_type in ['GNN_ablation', 'Hidden_Dim_ablation', 'Dropout_ablation']:
+            dataset = parts[1] if len(parts) > 1 else 'unknown'
+            detail = parts[2] if len(parts) > 2 else 'default'
+        else:
+            # For HGT_Causal_MIMIC4_RMDL etc.
+            dataset = 'mimiciv' if 'mimic4' in model_type.lower() else 'mimiciii' if 'mimic3' in model_type.lower() else 'unknown'
+            detail = 'default'
+            
         # Load stats
         try:
             with open(stats_file, 'r') as f:
@@ -32,16 +40,11 @@ def aggregate_results(checkpoints_dir='checkpoints'):
         if not epochs_stats:
             continue
             
-        # Find best stats for each task based on some metric (e.g., ROC AUC)
-        # Since multiple tasks might exist in one stats file (Multi-Task), 
-        # we might want to track the best epoch overall or per task.
-        # For simplicity, let's take the best ROC AUC for each task across all epochs.
-        
         summary = {
             'path': str(folder),
             'model_type': model_type,
-            'dataset': parts[1] if len(parts) > 1 else 'unknown',
-            'detail': parts[2] if len(parts) > 2 else 'default'
+            'dataset': dataset,
+            'detail': detail
         }
         
         tasks = ['mort_pred', 'los', 'drug_rec', 'readm']
@@ -97,9 +100,9 @@ def plot_model_comparison(df, benchmark_dir):
         # If we only have HGT_Causal_MIMIC4_RMDL, let's just use what we have
         comparison_df = df.copy()
 
-    # Map detail to model name for GNN_ablation
+    # Map detail to model name for GNN_ablation, and include dataset if needed
     comparison_df['model_name'] = comparison_df.apply(
-        lambda x: x['detail'] if x['model_type'] == 'GNN_ablation' else x['model_type'], axis=1
+        lambda x: f"{x['dataset']}_{x['detail']}" if x['model_type'] == 'GNN_ablation' else f"{x['dataset']}_{x['model_type']}", axis=1
     )
     
     tasks = ['mort_pred', 'los', 'drug_rec', 'readm']
@@ -118,8 +121,11 @@ def plot_model_comparison(df, benchmark_dir):
     if melted_df.empty:
         return
 
+    # Deduplicate in case of multiple runs
+    melted_df = melted_df.groupby(['model_name', 'Task'])['AUC'].max().reset_index()
+
     plt.figure(figsize=(12, 7))
-    models = melted_df['model_name'].unique()
+    models = sorted(melted_df['model_name'].unique())
     tasks_unique = melted_df['Task'].unique()
     
     x = range(len(tasks_unique))
