@@ -1,4 +1,4 @@
-graph_path: "./data/graphs/mimic3_dp.pkl"
+graph_path: "./data/graphs/mimic3_dp_graph.pkl"
 labels_path: "./data/graphs/mimic3_dp_labels.pkl"
 graph_output_path: "./data/graphs/mimic3_dp_ptr.pkl"
 n_epoch: 100
