@@ -44,11 +44,11 @@ train:
     "drug_rec",
     "readm"
   ]
-  num_epochs: 2
-  batch_size: 1024
+  num_epochs: 1000
+  batch_size: 4096
   causal: True
   reg: 0.00005
-  n_samples: 100
+  n_samples: 2000
   temperature: 0.005
 
 #### logging settings:

@@ -19,6 +19,17 @@ echo "================================================================"
 # Enable MPS fallback for better compatibility on macOS
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 
+# Export MODE for downstream scripts (like run_train.py)
+export MODE=$MODE
+
+# Set dev-mode hyperparameter defaults if in dev mode
+if [ "$MODE" == "dev" ]; then
+    export DEV_EPOCHS=${DEV_EPOCHS:-2}
+    export DEV_BATCH_SIZE=${DEV_BATCH_SIZE:-1024}
+    export DEV_SAMPLES=${DEV_SAMPLES:-100}
+    export DEV_PRETRAIN_EPOCHS=${DEV_PRETRAIN_EPOCHS:-2}
+fi
+
 # Determine config suffix based on dataset
 if [ "$DATASET" == "mimiciv" ]; then
     CONFIG_DS="MIMIC4"
