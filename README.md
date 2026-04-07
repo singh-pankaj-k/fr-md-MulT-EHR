@@ -22,6 +22,16 @@ The project focuses on building a multi-task heterogeneous Graph Neural Network 
 - `trainers/`: Core training loops and orchestration logic.
 - `references/`: Supporting documentation, external codebases, and scripts.
 
+## Installation
+
+You can install the required dependencies using `pip`:
+
+```bash
+pip install -r requirements.txt
+```
+
+Note: The local `PyHealth` library in `./references/PyHealth-master` is installed in editable mode.
+
 ## Dataset
 
 We use the MIMIC-III and MIMIC-IV datasets to benchmark our method.
