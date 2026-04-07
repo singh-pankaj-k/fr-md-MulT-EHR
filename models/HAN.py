@@ -9,95 +9,54 @@ labels.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-import dgl
-from dgl.nn.pytorch import GATConv
-
-
-class SemanticAttention(nn.Module):
-    def __init__(self, in_size, hidden_size=128):
-        super(SemanticAttention, self).__init__()
-
-        self.project = nn.Sequential(
-            nn.Linear(in_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, 1, bias=False)
-        )
-
-    def forward(self, z):
-        w = self.project(z).mean(0)                    # (M, 1)
-        beta = torch.softmax(w, dim=0)                 # (M, 1)
-        beta = beta.expand((z.shape[0],) + beta.shape) # (N, M, 1)
-
-        return (beta * z).sum(1)                       # (N, D * K)
+from torch_geometric.nn import HANConv, Linear
+from .GNN import GNN
 
 
-class HANLayer(nn.Module):
-    """
-    HAN layer.
-    Arguments
-    ---------
-    meta_paths : list of metapaths, each as a list of edge types
-    in_size : input feature dimension
-    out_size : output feature dimension
-    layer_num_heads : number of attention heads
-    dropout : Dropout probability
-    Inputs
-    ------
-    g : DGLHeteroGraph
-        The heterogeneous graph
-    h : tensor
-        Input features
-    Outputs
-    -------
-    tensor
-        The output feature
-    """
-    def __init__(self, meta_paths, in_size, out_size, layer_num_heads, dropout):
-        super(HANLayer, self).__init__()
+class HAN(GNN):
+    def __init__(self, metadata, in_size, hidden_size, out_size, num_heads, dropout, tasks, causal):
+        # Note: PyG's HANConv expects metadata (node_types, edge_types)
+        super(HAN, self).__init__(in_size, hidden_size, out_size, len(num_heads), F.relu, dropout, tasks, causal)
 
-        # One GAT layer for each meta path based adjacency matrix
-        self.gat_layers = nn.ModuleList()
-        for i in range(len(meta_paths)):
-            self.gat_layers.append(GATConv(in_size, out_size, layer_num_heads,
-                                           dropout, dropout, activation=F.elu,
-                                           allow_zero_in_degree=True))
-        self.semantic_attention = SemanticAttention(in_size=out_size * layer_num_heads)
-        self.meta_paths = list(tuple(meta_path) for meta_path in meta_paths)
-
-        self._cached_graph = None
-        self._cached_coalesced_graph = {}
-
-    def forward(self, g, h):
-        semantic_embeddings = []
-
-        if self._cached_graph is None or self._cached_graph is not g:
-            self._cached_graph = g
-            self._cached_coalesced_graph.clear()
-            for meta_path in self.meta_paths:
-                self._cached_coalesced_graph[meta_path] = dgl.metapath_reachable_graph(
-                        g, meta_path)
-
-        for i, meta_path in enumerate(self.meta_paths):
-            new_g = self._cached_coalesced_graph[meta_path]
-            semantic_embeddings.append(self.gat_layers[i](new_g, h).flatten(1))
-        semantic_embeddings = torch.stack(semantic_embeddings, dim=1)                  # (N, M, D * K)
-
-        return self.semantic_attention(semantic_embeddings)                            # (N, D * K)
-
-class HAN(nn.Module):
-    def __init__(self, meta_paths, in_size, hidden_size, out_size, num_heads, dropout):
-        super(HAN, self).__init__()
+        self.lin_dict = nn.ModuleDict()
+        for node_type in metadata[0]:
+            self.lin_dict[node_type] = Linear(in_size, hidden_size)
 
         self.layers = nn.ModuleList()
-        self.layers.append(HANLayer(meta_paths, in_size, hidden_size, num_heads[0], dropout))
-        for l in range(1, len(num_heads)):
-            self.layers.append(HANLayer(meta_paths, hidden_size * num_heads[l-1],
-                                        hidden_size, num_heads[l], dropout))
-        self.predict = nn.Linear(hidden_size * num_heads[-1], out_size)
+        # HANConv in PyG handles multiple layers and heads
+        for i in range(len(num_heads)):
+            in_ch = hidden_size # after initial linear
+            self.layers.append(HANConv(in_ch, hidden_size, heads=num_heads[i], metadata=metadata, dropout=dropout))
 
-    def forward(self, g, h):
-        for gnn in self.layers:
-            h = gnn(g, h)
+        if causal:
+            self.rand_layers = nn.ModuleList()
+            for i in range(len(num_heads)):
+                self.rand_layers.append(HANConv(hidden_size, hidden_size, heads=num_heads[i], metadata=metadata, dropout=dropout))
 
-        return self.predict(h)
+    def forward(self, x_dict, edge_index_dict, out_key, task):
+        logits_dict = self.get_logit(x_dict, edge_index_dict)
+        logits = logits_dict[out_key]
+        self.embeddings = torch.cat(list(logits_dict.values()), dim=0)
+        
+        out = self.out[task](logits)
+
+        if self.causal:
+            feat_rand_dict = self.get_logit(x_dict, edge_index_dict, causal=True)
+            feat_rand = feat_rand_dict[out_key]
+            feat_interv = logits + feat_rand
+            out_interv = self.out[task](feat_interv)
+            feat_rand_cat = torch.cat(list(feat_rand_dict.values()), dim=0)
+            return out, feat_rand_cat, out_interv
+
+        return out
+
+    def get_logit(self, x_dict, edge_index_dict, causal=False):
+        x_dict = {
+            node_type: self.lin_dict[node_type](x).relu()
+            for node_type, x in x_dict.items()
+        }
+
+        layers = self.layers if not causal else self.rand_layers
+        for layer in layers:
+            x_dict = layer(x_dict, edge_index_dict)
+        return x_dict

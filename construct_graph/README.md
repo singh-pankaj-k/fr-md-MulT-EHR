@@ -13,6 +13,6 @@ The graph construction typically involves:
 1. Parsing tabular EHR data (patients, admissions, diagnoses, medications, etc.).
 2. Mapping medical codes to unique identifiers.
 3. Defining node types (e.g., Patient, Admission, Medical Code) and edge types (e.g., ADMITTED_TO, HAS_DIAGNOSIS).
-4. Creating a heterogeneous graph object compatible with PyTorch Geometric (PyG) or Deep Graph Library (DGL).
+4. Creating a heterogeneous graph object (`HeteroData`) compatible with PyTorch Geometric (PyG).
 
 This process is usually triggered by `get_graph.py` in the root directory.

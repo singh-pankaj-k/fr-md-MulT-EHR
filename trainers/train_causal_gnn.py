@@ -2,7 +2,6 @@ import wandb
 import random
 from collections import OrderedDict
 
-import dgl
 from tqdm import tqdm
 
 import numpy as np
@@ -44,7 +43,9 @@ class CausalGNNTrainer(Trainer):
             graph_path, labels_path, pretrained=pretrained
         )
 
-        self.graph = dgl.AddReverse()(self.graph)
+        # self.graph = dgl.AddReverse()(self.graph)
+        self.x_dict = {tp: self.graph[tp].x for tp in self.graph.node_types}
+        self.edge_index_dict = self.graph.edge_index_dict
 
         # Data augmentations
         # self.graph_aug = dgl.transforms.Compose(
@@ -56,9 +57,9 @@ class CausalGNNTrainer(Trainer):
         self.graph_aug = None
 
         # Read node_dict
-        self.node_dict = {}
-        for tp in self.graph.ntypes:
-            self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
+        # self.node_dict = {}
+        # for tp in self.graph.ntypes:
+        #     self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
 
         self.gnn = parse_gnn_model(self.config_gnn, self.graph, self.tasks, causal=True).to(self.device)
         # read lists of edges
@@ -88,9 +89,11 @@ class CausalGNNTrainer(Trainer):
 
                 indices, labels = self.get_indices_labels(t)
 
-                sg = self.get_subgraphs(indices, "visit")
+                # sg = self.get_subgraphs(indices, "visit")
 
-                preds, rand_feat, preds_interv = self.gnn(sg, "visit", t)
+                preds, rand_feat, preds_interv = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
+                preds = preds[indices]
+                preds_interv = preds_interv[indices]
 
                 unif_loss = self.unif_loss(rand_feat) if self.causal else 0
 
@@ -152,10 +155,11 @@ class CausalGNNTrainer(Trainer):
             all_preds = []
             for chunk in torch.split(torch.from_numpy(indices), self.n_samples):
 
-                sg = self.get_subgraphs(chunk, "visit", False)
+                # sg = self.get_subgraphs(chunk, "visit", False)
 
                 with torch.no_grad():
-                    preds, _, _ = self.gnn(sg, "visit", t)
+                    preds, _, _ = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
+                    preds = preds[chunk]
                     # preds *= self.temperature
                     if t == "drug_rec":
                         preds = preds.sigmoid()

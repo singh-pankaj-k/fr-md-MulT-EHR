@@ -1,9 +1,10 @@
 """
-General GNN Module
+General GNN Module for PyTorch Geometric
 """
 
 import torch
 from torch import nn
+from torch_geometric.data import HeteroData
 
 
 class GNN(nn.Module):
@@ -29,8 +30,7 @@ class GNN(nn.Module):
         self.causal = causal
         self.tasks = tasks
 
-        self.layers = self.get_layers()
-
+        # We will initialize layers in the child class
         self.out = nn.ModuleDict()
         for t in tasks:
             if t in ["readm", "mort_pred"]:
@@ -39,18 +39,18 @@ class GNN(nn.Module):
                 self.out[t] = nn.Linear(hidden_dim, 10)
             elif t == "drug_rec":
                 self.out[t] = nn.Linear(hidden_dim, out_dim)
+        
         if causal:
-            self.rand_layers = self.get_layers()
             self.out_rand = nn.ModuleDict()
             for t in tasks:
                 self.out_rand[t] = nn.Linear(hidden_dim, out_dim)
 
         self.embeddings = None
 
-    def get_layers(self):
+    def forward(self, x_dict, edge_index_dict, out_key, task):
         raise NotImplementedError
 
-    def get_logit(self, g, h, causal=False):
+    def get_logit(self, x_dict, edge_index_dict, causal=False):
         raise NotImplementedError
 
     def set_embeddings(self, emb):

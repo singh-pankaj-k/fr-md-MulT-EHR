@@ -62,6 +62,7 @@ def parse_optimizer(config_optim, model):
 
 def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
     gnn_name = config_gnn["name"]
+    metadata = g.metadata()
 
     if gnn_name == "GAT":
         n_layers = config_gnn["num_layers"]
@@ -69,6 +70,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         n_out_heads = config_gnn["num_out_heads"]
         heads = ([n_heads] * n_layers) + [n_out_heads]
         return GAT(
+            metadata=metadata,
             n_layers=config_gnn["num_layers"],
             in_dim=config_gnn["in_dim"],
             hidden_dim=config_gnn["hidden_dim"],
@@ -84,6 +86,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         )
     elif gnn_name == "GCN":
         return GCN(
+            metadata=metadata,
             in_dim=config_gnn["in_dim"],
             hidden_dim=config_gnn["hidden_dim"],
             out_dim=config_gnn["out_dim"],
@@ -95,6 +98,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         )
     elif gnn_name == "GIN":
         return GIN(
+            metadata=metadata,
             in_dim=config_gnn["in_dim"],
             hidden_dim=config_gnn["hidden_dim"],
             out_dim=config_gnn["out_dim"],
@@ -120,7 +124,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         )
     elif gnn_name == "HGT":
         return HGT(
-            g,
+            metadata=metadata,
             n_inp=config_gnn["in_dim"],
             n_hid=config_gnn["hidden_dim"],
             n_out=config_gnn["out_dim"],
@@ -132,7 +136,7 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         )
     elif gnn_name == "HetRGCN":
         return HeteroRGCN(
-            g,
+            metadata=metadata,
             in_dim=config_gnn["in_dim"],
             hidden_dim=config_gnn["hidden_dim"],
             out_dim=config_gnn["out_dim"],
@@ -150,13 +154,16 @@ def parse_gnn_model(config_gnn, g, tasks=None, causal=False):
         }
 
         return BGCN(
+            metadata=metadata,
             in_dim=config_gnn["in_dim"],
             hidden_dim=config_gnn["hidden_dim"],
             out_dim=config_gnn["out_dim"],
             n_layers=config_gnn["num_layers"],
             activation=F.relu,
             dropout=config_gnn["feat_drop"],
-            priors=priors
+            priors=priors,
+            tasks=tasks,
+            causal=causal
         )
     else:
         raise NotImplementedError("This GNN model is not implemented")

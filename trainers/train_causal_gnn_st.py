@@ -3,7 +3,6 @@ import wandb
 import random
 from collections import OrderedDict
 
-import dgl
 from tqdm import tqdm
 
 import torch
@@ -49,13 +48,14 @@ class CausalSTGNNTrainer(Trainer):
         pretrained = self.config_data["pretrained"]
         self.graph, self.labels, self.train_mask, self.test_mask = load_graph(graph_path, labels_path, pretrained=pretrained)
 
-        # Transform the graph
-        self.graph = dgl.AddReverse()(self.graph)
+        # self.graph = dgl.AddReverse()(self.graph)
+        self.x_dict = {tp: self.graph[tp].x for tp in self.graph.node_types}
+        self.edge_index_dict = self.graph.edge_index_dict
 
         # Read node_dict
-        self.node_dict = {}
-        for tp in self.graph.ntypes:
-            self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
+        # self.node_dict = {}
+        # for tp in self.graph.ntypes:
+        #     self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
 
         self.gnns = {}
         for t in self.tasks:
@@ -82,9 +82,10 @@ class CausalSTGNNTrainer(Trainer):
                 self.optimizers[t].zero_grad()
                 indices, labels = self.get_indices_labels(t)
 
-                sg = self.get_subgraphs(indices, "visit")
+                # sg = self.get_subgraphs(indices, "visit")
 
-                preds, rand_feat, _ = self.gnns[t](sg, "visit", t)
+                preds, rand_feat, _ = self.gnns[t](self.x_dict, self.edge_index_dict, "visit", t)
+                preds = preds[indices]
 
                 unif_loss = self.unif_loss(rand_feat) if self.causal else 0
 

@@ -5,7 +5,7 @@ Bayesian Graph Convolutional Layer
 import torch
 import torch.nn as nn
 from torch.nn import Parameter
-from dgl.nn.pytorch import GraphConv
+from torch_geometric.nn import GCNConv
 
 from losses import calculate_kl
 
@@ -45,13 +45,12 @@ class BBBGraphConv(nn.Module):
             self.register_parameter('bias_rho', None)
 
         # Define frequentist graph convolutional layer
-        self.graph_conv = GraphConv(
-            in_feats=in_channels,
-            out_feats=out_channels,
-            norm='both',
-            weight=False,
-            bias=False,  # Use external bias
-            allow_zero_in_degree=self.allow_zero_in_degree
+        self.graph_conv = GCNConv(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            normalize=True,
+            add_self_loops=True,
+            bias=False  # Use external bias
         )
 
         self.reset_parameters()
@@ -64,7 +63,7 @@ class BBBGraphConv(nn.Module):
             self.bias_mu.data.normal_(*self.posterior_mu_initial)
             self.bias_rho.data.normal_(*self.posterior_rho_initial)
 
-    def forward(self, graph, feat, sample=True):
+    def forward(self, edge_index, feat, sample=True):
         if self.training or sample:
             W_eps = torch.empty(self.W_mu.size()).normal_(0, 1).to(self.device)
             self.W_sigma = torch.log1p(torch.exp(self.W_rho))
@@ -80,7 +79,12 @@ class BBBGraphConv(nn.Module):
             weight = self.W_mu
             bias = self.bias_mu if self.use_bias else None
 
-        out = self.graph_conv(graph, feat, weight=weight)
+        # Apply weight manually for GCNConv if needed, or use a custom message passing
+        # PyG's GCNConv usually applies weight internally. To use our custom weight:
+        # We can use message passing directly or multiply feat by weight first
+        
+        x = torch.matmul(feat, weight)
+        out = self.graph_conv(x, edge_index)
 
         if bias is not None:
             out += bias

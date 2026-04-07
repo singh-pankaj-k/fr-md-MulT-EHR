@@ -1,42 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import dgl
-from dgl.nn.pytorch.conv import GINConv
-from dgl.nn.pytorch.glob import SumPooling, AvgPooling, MaxPooling, GlobalAttentionPooling
-
+from torch_geometric.nn import GINConv, HeteroConv, Linear
 from .GNN import GNN
-
-
-class ApplyNodeFunc(nn.Module):
-    """Update the node feature hv with MLP, BN and ReLU."""
-    def __init__(self, mlp):
-        super(ApplyNodeFunc, self).__init__()
-        self.mlp = mlp
-        self.bn = nn.BatchNorm1d(self.mlp.output_dim)
-
-    def forward(self, h):
-        h = self.mlp(h)
-        h = self.bn(h)
-        h = F.relu(h)
-        return h
 
 
 class MLP(nn.Module):
     """MLP with linear output"""
     def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
-        """MLP layers construction
-        Paramters
-        ---------
-        num_layers: int
-            The number of linear layers
-        input_dim: int
-            The dimensionality of input features
-        hidden_dim: int
-            The dimensionality of hidden units at ALL layers
-        output_dim: int
-            The number of classes for prediction
-        """
         super(MLP, self).__init__()
         self.linear_or_not = True  # default is linear model
         self.num_layers = num_layers
@@ -75,79 +46,65 @@ class MLP(nn.Module):
 
 class GIN(GNN):
     """GIN model"""
-    def __init__(self, in_dim, hidden_dim,
+    def __init__(self, metadata, in_dim, hidden_dim,
                  out_dim, num_layers, num_mlp_layers,
                  final_dropout, tasks,
                  causal, neighbor_pooling_type="mean", learn_eps=True):
-        """model parameters setting
-        Paramters
-        ---------
-        num_layers: int
-            The number of linear layers in the neural network
-        num_mlp_layers: int
-            The number of linear layers in mlps
-        input_dim: int
-            The dimensionality of input features
-        hidden_dim: int
-            The dimensionality of hidden units at ALL layers
-        output_dim: int
-            The number of classes for prediction
-        final_dropout: float
-            dropout ratio on the final linear layer
-        learn_eps: boolean
-            If True, learn epsilon to distinguish center nodes from neighbors
-            If False, aggregate neighbors and center nodes altogether.
-        neighbor_pooling_type: str
-            how to aggregate neighbors (sum, mean, or max)
-        graph_pooling_type: str
-            how to aggregate entire nodes in a graph (sum, mean or max)
-        """
+        
         self.learn_eps = learn_eps
         self.num_mlp_layers = num_mlp_layers
         self.neighbor_pooling_type = neighbor_pooling_type
 
         super().__init__(in_dim, hidden_dim, out_dim, num_layers, F.relu, final_dropout, tasks, causal)
 
-    def forward(self, g: dgl.DGLHeteroGraph, nt, task):
-        g = dgl.to_homogeneous(g, ndata=["feat"], store_type=True)
-        g = dgl.add_self_loop(g)
+        self.lin_dict = nn.ModuleDict()
+        for node_type in metadata[0]:
+            self.lin_dict[node_type] = Linear(in_dim, hidden_dim)
 
-        h = g.ndata["feat"]
-        logits = self.get_logit(g, h)
-        h = self.out[task](logits)
-        out = h[g.ndata["_TYPE"] == 4]
+        self.convs = nn.ModuleList()
+        for layer in range(num_layers):
+            conv_dict = {}
+            for edge_type in metadata[1]:
+                mlp = MLP(num_mlp_layers, hidden_dim, hidden_dim, hidden_dim)
+                conv_dict[edge_type] = GINConv(mlp, train_eps=learn_eps)
+            self.convs.append(HeteroConv(conv_dict, aggr=neighbor_pooling_type))
+
+        if causal:
+            self.rand_convs = nn.ModuleList()
+            for layer in range(num_layers):
+                conv_dict = {}
+                for edge_type in metadata[1]:
+                    mlp = MLP(num_mlp_layers, hidden_dim, hidden_dim, hidden_dim)
+                    conv_dict[edge_type] = GINConv(mlp, train_eps=learn_eps)
+                self.rand_convs.append(HeteroConv(conv_dict, aggr=neighbor_pooling_type))
+
+    def forward(self, x_dict, edge_index_dict, out_key, task):
+        logits_dict = self.get_logit(x_dict, edge_index_dict)
+        logits = logits_dict[out_key]
+        self.embeddings = torch.cat(list(logits_dict.values()), dim=0)
+        
+        out = self.out[task](logits)
 
         if self.causal:
-            h = g.ndata["feat"]
-            feat_rand = self.get_logit(g, h, True)
+            feat_rand_dict = self.get_logit(x_dict, edge_index_dict, causal=True)
+            feat_rand = feat_rand_dict[out_key]
             feat_interv = logits + feat_rand
             out_interv = self.out[task](feat_interv)
-            return out, feat_rand, out_interv
+            feat_rand_cat = torch.cat(list(feat_rand_dict.values()), dim=0)
+            return out, feat_rand_cat, out_interv
 
         return out
 
-    def get_layers(self):
+    def get_logit(self, x_dict, edge_index_dict, causal=False):
+        x_dict = {
+            node_type: self.lin_dict[node_type](x).relu()
+            for node_type, x in x_dict.items()
+        }
 
-        layers = nn.ModuleList()
-
-        for layer in range(self.n_layers - 1):
-            if layer == 0:
-                mlp = MLP(self.num_mlp_layers, self.in_dim, self.hidden_dim, self.hidden_dim)
-            else:
-                mlp = MLP(self.num_mlp_layers, self.hidden_dim, self.hidden_dim, self.hidden_dim)
-
-            layers.append(
-                GINConv(ApplyNodeFunc(mlp), self.neighbor_pooling_type, 0, self.learn_eps))
-
-        return layers
-
-    def get_logit(self, g, h, causal=False):
-        layers = self.layers if not causal else self.rand_layers
-        for i, layer in enumerate(layers):
+        convs = self.convs if not causal else self.rand_convs
+        for i, conv in enumerate(convs):
             if i != 0:
-                h = self.dropout(h)
-            h = layer(g, h)
-
-        self.set_embeddings(h)
-
-        return h
+                x_dict = {k: self.dropout(x) for k, x in x_dict.items()}
+            x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {k: self.activation(x) for k, x in x_dict.items()}
+        return x_dict

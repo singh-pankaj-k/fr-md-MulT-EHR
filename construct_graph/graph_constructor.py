@@ -1,4 +1,4 @@
-import dgl
+from torch_geometric.data import HeteroData
 import torch
 from tqdm import tqdm
 
@@ -61,7 +61,9 @@ class GraphConstructor:
     def construct_graph(self):
         # Construct graph with the loaded datasets and tables
         graph_data = self.get_graph_data()
-        self.graph = dgl.heterograph(graph_data)
+        self.graph = HeteroData()
+        for (src, rel, dst), (edge_index_src, edge_index_dst) in graph_data.items():
+            self.graph[src, rel, dst].edge_index = torch.stack([edge_index_src, edge_index_dst], dim=0)
 
     def initialize_features(self):
 
@@ -179,7 +181,7 @@ class GraphConstructor:
         mort_pred_samples, drug_rec_samples, los_samples, readm_samples = self.get_sample_datasets()
 
         vm = self.mappings["visit"]
-        n_nodes = self.graph.num_nodes("visit")
+        n_nodes = self.graph["visit"].num_nodes
         mort_labels = torch.zeros((n_nodes))
 
         # Assign mortality status

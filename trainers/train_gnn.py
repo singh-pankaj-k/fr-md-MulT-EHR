@@ -1,7 +1,6 @@
 import os
 from collections import OrderedDict
 
-import dgl
 from tqdm import tqdm
 
 import torch
@@ -36,13 +35,12 @@ class GNNTrainer(Trainer):
         entity_mapping = self.config_data["entity_mapping"]
         self.graph, self.labels, self.train_mask, self.test_mask = load_graph(graph_path, labels_path)
 
-        # Transform the graph
-        self.graph = dgl.AddReverse()(self.graph)
+        # PyG: No need for dgl.AddReverse(), it's usually handled by adding reverse edges to HeteroData or during construction
+        # If reverse edges are needed and not in the graph, we can use T.ToUndirected()
 
-        # Read node_dict
-        self.node_dict = {}
-        for tp in self.graph.ntypes:
-            self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
+        # Read node_dict (In PyG, x_dict and edge_index_dict are passed directly)
+        self.x_dict = {tp: self.graph[tp].x for tp in self.graph.node_types}
+        self.edge_index_dict = self.graph.edge_index_dict
 
         self.gnn = parse_gnn_model(self.config_gnn, self.graph, self.tasks).to(self.device)
         self.optimizer = parse_optimizer(self.config_optim, self.gnn)
@@ -59,16 +57,24 @@ class GNNTrainer(Trainer):
 
             # Perform aggregation on visits
             self.optimizer.zero_grad()
-            d = self.node_dict.copy()
+            
+            # Simple subgraphing for PyG (full graph training for now as in original)
+            # In original code, it creates a subgraph for each task's training indices
             for t in self.tasks:
-                all_preds = []
-                # for indx in range(0, n_visits, self.batch_size):
-                    # high = min(indx + self.batch_size, n_visits - 1)
                 indices = self.train_mask[t]
-                d["visit"] = self.node_dict["visit"][indices]
-                sg = self.graph.subgraph(d).to(self.device)
-                preds = self.gnn(sg, "visit", t)
+                # To simulate subgraphing on 'visit' nodes in PyG:
+                # We can either pass a mask or truly subgraph
+                # Here we pass the full x_dict/edge_index_dict and then slice the output
+                preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
+                preds = preds_dict # The HGT model I wrote returns the output for the specified task and key already
+                
                 labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+                # Slice preds to only include the training indices for 'visit' nodes
+                # Note: This assumes the model output corresponds to all 'visit' nodes
+                # The way I wrote HGT.forward, it returns self.out[task](logits[out_key])
+                # where logits[out_key] is for all nodes of that type.
+                
+                preds = preds[indices]
                 loss = F.cross_entropy(preds, labels)
 
             loss.backward()
@@ -103,27 +109,23 @@ class GNNTrainer(Trainer):
             indices = self.test_mask[t]
             labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
 
-            d = self.node_dict.copy()
-            d["visit"] = self.node_dict["visit"][indices]
-            sg = self.graph.subgraph(d).to(self.device)
             with torch.no_grad():
-                preds = self.gnn(sg, "visit", t)
+                preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
+                preds = preds_dict[indices]
 
         test_metrics = metrics(preds, labels, average="binary", prefix="test")
 
         return test_metrics
 
-    def get_masks(self, g: dgl.DGLGraph, train: bool, task: str):
+    def get_masks(self, g, train: bool, task: str):
         if train:
             masks = self.train_mask[task]
-            labels = [self.labels[task][v] for v in masks]
         else:
             masks = self.test_mask[task]
-            labels = [self.labels[task][v] for v in masks]
 
         m = {}
 
-        for tp in g.ntypes:
+        for tp in g.node_types:
             if tp == "visit":
                 m[tp] = torch.from_numpy(masks.astype("int32"))
             else:

@@ -30,7 +30,7 @@ You can install the required dependencies using `pip`:
 pip install -r requirements.txt
 ```
 
-Note: The local `PyHealth` library in `./references/PyHealth-master` is installed in editable mode.
+Note: DGL is not used in the main pipeline to ensure compatibility with macOS (Apple Silicon). We use **PyTorch Geometric (PyG)** as the graph learning backend.
 
 ## Dataset
 
