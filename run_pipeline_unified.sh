@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # Multi-task Heterogeneous Graph Learning on EHR - Unified Pipeline Script
-# Two variables control the execution:
+# Three variables control the execution:
 # 1. DATASET: mimiciv (default) or mimiciii
 # 2. MODE: dev (default) or full
+# 3. CLEAN: true or false (default)
 
 DATASET=${1:-mimiciv}
 MODE=${2:-dev}
+CLEAN=${3:-false}
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
@@ -14,7 +16,22 @@ echo "================================================================"
 echo "Starting Unified EHR Pipeline"
 echo "DATASET: $DATASET"
 echo "MODE:    $MODE"
+echo "CLEAN:   $CLEAN"
 echo "================================================================"
+
+# Step 0: Optionally clean previous results
+if [ "$CLEAN" == "true" ]; then
+    echo "Cleaning previous output and artifacts..."
+    rm -rf checkpoints/*
+    rm -rf data/graphs/*
+    rm -rf data/dataset_objects/*
+    rm -rf data/mimic3_objects/*
+    rm -rf benchmark/*
+    
+    # Recreate necessary directories
+    mkdir -p data/graphs data/dataset_objects data/mimic3_objects benchmark/plots
+    echo "Done cleaning."
+fi
 
 # Enable MPS fallback for better compatibility on macOS
 export PYTORCH_ENABLE_MPS_FALLBACK=1
