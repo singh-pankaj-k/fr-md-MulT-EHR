@@ -33,3 +33,4 @@ var/
 ./data
 ./manuscripts
 ./physionet.org
+/data/root/
