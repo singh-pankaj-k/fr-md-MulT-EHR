@@ -35,7 +35,7 @@ The processed data (in `pkl` formats) will be stored in the respective subdirect
 ### Quick Start
 
 ```bash
-python main.py --config configs/HGT_MT_MIMIC3.yml
+python main.py --config configs/HGT_MT_MIMIC4.yml
 ```
 
 ## Acknowledgement

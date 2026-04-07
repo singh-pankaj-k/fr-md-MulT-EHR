@@ -32,7 +32,7 @@ mode = "train"
 
 def main():
     if mode == "train":
-        config_name = "HGT_Causal_MIMIC3.yml"
+        config_name = "HGT_Causal_MIMIC4.yml"
         config = load_config(config_name)
 
         if config["train_type"] == "gnn":
@@ -47,7 +47,7 @@ def main():
             raise NotImplementedError("This type of model is not implemented")
         trainer.train()
     elif mode == "pretrain":
-        config_name = "MIMIC3_TransE.yml"
+        config_name = "MIMIC4_TransE.yml"
         config = load_config(config_name, "./configs/pretrain/")
 
         pretrainer = Pretrainer(config)
