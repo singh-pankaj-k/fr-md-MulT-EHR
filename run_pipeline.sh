@@ -13,6 +13,10 @@ echo "================================================================"
 # 1. Create Graph (using pyhealth dev mode for speed)
 echo ""
 echo "Step 1: Creating heterogeneous graph (Dev Mode)..."
+
+# Enable MPS fallback for better compatibility on macOS
+export PYTORCH_ENABLE_MPS_FALLBACK=1
+
 # You can change the config file here (e.g., configs/construct_graph/MIMIC4.yml)
 python run_graph_creation_dev.py configs/construct_graph/MIMIC4.yml
 

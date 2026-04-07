@@ -5,6 +5,7 @@ from collections import OrderedDict
 import wandb
 
 from checkpoint import CheckpointManager
+from utils import get_device
 
 
 class Trainer(ABC):
@@ -29,9 +30,8 @@ class Trainer(ABC):
         self.batch_size = self.config_train['batch_size']
 
         # Load device for training
-        self.gpu_ids = config['gpu_ids']
-        self.device = "cuda" if config['gpu_ids'] else "cpu"
-        self.use_gpu = True if self.device == "cuda" else False
+        self.device = get_device()
+        self.use_gpu = True if self.device.type in ["cuda", "mps"] else False
 
         self.init_temperature = 1
 

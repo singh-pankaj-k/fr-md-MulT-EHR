@@ -7,13 +7,16 @@ import pickle
 from tqdm import tqdm
 
 from data import load_graph
+from utils import get_device
 
 
 class Pretrainer:
     def __init__(self, config):
+        self.device = get_device()
         graph_path = config["graph_path"]
         label_path = config["labels_path"]
         self.graph, _, _, _ = load_graph(graph_path, label_path)
+        self.graph = self.graph.to(self.device)
 
         # PyG LinkNeighborLoader for link prediction
         # We need to specify the edge type for which we want to sample

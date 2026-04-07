@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from .module_wrapper import ModuleWrapper
 from losses import calculate_kl
+from utils import get_device
 
 
 class BBBLinear(nn.Module):
@@ -15,7 +16,7 @@ class BBBLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.use_bias = bias
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = get_device()
 
         if priors is None:
             priors = {

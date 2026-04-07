@@ -14,6 +14,20 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+import torch
+
+def get_device():
+    """
+    Returns the best available device: cuda, mps, or cpu.
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")
+
+
 def ordered_yaml():
     """
     yaml orderedDict support

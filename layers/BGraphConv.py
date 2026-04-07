@@ -8,6 +8,7 @@ from torch.nn import Parameter
 from torch_geometric.nn import GCNConv
 
 from losses import calculate_kl
+from utils import get_device
 
 
 class BBBGraphConv(nn.Module):
@@ -20,7 +21,7 @@ class BBBGraphConv(nn.Module):
         self.use_bias = bias
         self.allow_zero_in_degree = allow_zero_in_degree
         self.activation = activation
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = get_device()
 
         if priors is None:
             priors = {
