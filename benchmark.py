@@ -1,3 +1,4 @@
+import os
 import yaml
 from utils import ordered_yaml
 
@@ -13,11 +14,18 @@ from trainers import (
 )
 
 
-def benchmark_baselines(config):
+def benchmark_baselines(dataset="MIMIC4"):
+    # Load config based on dataset
+    config_file = f"Baselines_{dataset}.yml"
+    config_path = f"./configs/{config_file}"
+    with open(config_path, mode='r') as f:
+        loader, _ = ordered_yaml()
+        config = yaml.load(f, loader)
+
     # Initialize baseline models
     with open(config["datasets"]["dataset_path"], 'rb') as inp:
         unp = pickle.Unpickler(inp)
-        mimic3base = unp.load()
+        mimic_base = unp.load()
 
     for method in [
         # "DrAgent",
@@ -46,23 +54,31 @@ def benchmark_baselines(config):
             config["checkpoint"]["path"] = f"./checkpoints/{method}/{dataset_name}/{task}/"
             print(f"Training {method} on task {task}")
 
-            trainer = BaselinesTrainer(config, mimic3base)
+            trainer = BaselinesTrainer(config, mimic_base)
             trainer.train()
             del trainer
 
 
-def benchmark_gnns(config):
-    # Load GNN configs
-    with open("./configs/GNN/GNN_MIMIC4_Configs.yml", mode='r') as f:
+def benchmark_gnns(dataset="MIMIC4"):
+    # Load base config
+    config_file = f"HGT_Causal_{dataset}.yml"
+    config_path = f"./configs/{config_file}"
+    with open(config_path, mode='r') as f:
+        loader, _ = ordered_yaml()
+        config = yaml.load(f, loader)
+
+    # Load GNN specific configs
+    gnn_config_file = f"GNN_MIMIC4_Configs.yml" if dataset == "MIMIC4" else "GNN_Configs.yml"
+    with open(f"./configs/GNN/{gnn_config_file}", mode='r') as f:
         loader, _ = ordered_yaml()
         gnn_config = yaml.load(f, loader)
 
     for archi in [
         # "GCN",
         # "GAT",
-        "GIN",
-        "HetRGCN",
-        # "HGT"
+        # "GIN",
+        # "HetRGCN",
+        "HGT"
     ]:
         config["GNN"] = gnn_config[archi]
         dataset_name = config["datasets"]["name"]
@@ -76,12 +92,18 @@ def benchmark_gnns(config):
         del trainer
 
 
-def benchmark_dropouts(config):
+def benchmark_dropouts(dataset="MIMIC4"):
+    config_file = f"HGT_Causal_{dataset}.yml"
+    config_path = f"./configs/{config_file}"
+    with open(config_path, mode='r') as f:
+        loader, _ = ordered_yaml()
+        config = yaml.load(f, loader)
+
     for dp in [
-        0.1, 0.2, 0.3, 0.4, 0.5, 0.6
+        0.1, 0.3, 0.5
     ]:
         config["GNN"]["feat_drop"] = dp
-        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_dp{dp}"
+        config["name"] = f"HGT_MTCausal_{dataset}_RMDL_dp{dp}"
         dataset_name = config["datasets"]["name"]
         config["checkpoint"]["path"] = f"./checkpoints/Dropout_ablation/{dataset_name}/{dp}/"
         config["logging"]["tags"] += ["abl_dropout"]
@@ -92,12 +114,18 @@ def benchmark_dropouts(config):
         del trainer
 
 
-def benchmark_hidden_dim(config):
+def benchmark_hidden_dim(dataset="MIMIC4"):
+    config_file = f"HGT_Causal_{dataset}.yml"
+    config_path = f"./configs/{config_file}"
+    with open(config_path, mode='r') as f:
+        loader, _ = ordered_yaml()
+        config = yaml.load(f, loader)
+
     for dim in [
-        16, 32, 64, 128, 256
+        32, 64
     ]:
         config["GNN"]["hidden_dim"] = dim
-        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_dim{dim}"
+        config["name"] = f"HGT_MTCausal_{dataset}_RMDL_dim{dim}"
         dataset_name = config["datasets"]["name"]
         config["checkpoint"]["path"] = f"./checkpoints/Hidden_Dim_ablation/{dataset_name}/{dim}/"
         config["logging"]["tags"] += ["abl_dim"]
@@ -108,38 +136,15 @@ def benchmark_hidden_dim(config):
         del trainer
 
 
-def benchmark_reg(config):
-    for reg in [
-        0.00005, 0.0001, 0.0005, 0.001, 0.01, 0.1, 1
-    ]:
-        config["train"]["reg"] = reg
-        config["name"] = f"HGT_MTCausal_MIMIC4_RMDL_reg{reg}"
-        dataset_name = config["datasets"]["name"]
-        config["checkpoint"]["path"] = f"./checkpoints/Reg_Coeff_ablation/{dataset_name}/{reg}/"
-        config["logging"]["tags"] += ["abl_reg"]
-
-        trainer = CausalGNNTrainer(config)
-        trainer.train()
-        wandb.finish()
-        del trainer
-
 # Set seed
 seed = 611
 random.seed(seed)
 torch.manual_seed(seed)
 
-# config_file = "Baselines_MIMIC4.yml"
-config_file = "HGT_Causal_MIMIC4.yml"
-config_path = f"./configs/{config_file}"
-
-with open(config_path, mode='r') as f:
-    loader, _ = ordered_yaml()
-    config = yaml.load(f, loader)
-    print(f"Loaded configs from {config_path}")
-
 if __name__ == "__main__":
-    # benchmark_baselines(config)
-    # benchmark_gnns(config)
-    # benchmark_dropouts(config)
-    benchmark_hidden_dim(config)
-    # benchmark_reg(config)
+    dataset = os.environ.get("BENCHMARK_DATASET", "MIMIC4")
+    print(f"Running benchmarks for {dataset}")
+    
+    benchmark_gnns(dataset)
+    benchmark_hidden_dim(dataset)
+    # benchmark_baselines(dataset)

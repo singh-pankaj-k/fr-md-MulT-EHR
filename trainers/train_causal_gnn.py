@@ -94,14 +94,18 @@ class CausalGNNTrainer(Trainer):
             self.optimizer.zero_grad()
             # random.shuffle(self.tasks)
             for t in self.tasks:
-
                 indices, labels = self.get_indices_labels(t)
-
-                # sg = self.get_subgraphs(indices, "visit")
+                
+                if len(indices) == 0:
+                    continue
 
                 preds, rand_feat, preds_interv = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
                 
                 # Check output size for drug_rec to handle label dimension mismatch
+                if labels.dim() < 2 and t == "drug_rec":
+                    # skip drug_rec if labels are empty
+                    continue
+
                 if t == "drug_rec" and preds.size(1) != labels.size(1):
                     print(f"Warning: Output size mismatch for {t}. Input: {preds.size(1)}, Target: {labels.size(1)}. Truncating/padding.")
                     if preds.size(1) > labels.size(1):
@@ -130,6 +134,9 @@ class CausalGNNTrainer(Trainer):
 
                 losses.append(loss.view(-1))
 
+            if not losses:
+                print("Warning: No losses computed for this epoch (all tasks skipped).")
+                continue
             var, mean = torch.var_mean(torch.cat(losses))
             loss = mean + torch.nan_to_num(var, 0).item()
             loss.backward()

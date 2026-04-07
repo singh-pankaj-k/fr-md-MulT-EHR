@@ -38,10 +38,12 @@ class GAT(GNN):
                 # In PyG GATConv, if it's the first layer, in_channels = hidden_dim
                 # due to the linear projection we do in get_logit
                 in_ch = hidden_dim if l == 0 else hidden_dim * heads[l-1]
+                add_self_loops = edge_type[0] == edge_type[2]
                 conv_dict[edge_type] = GATConv(in_ch, hidden_dim, heads[l], 
                                                dropout=attn_drop, 
                                                negative_slope=negative_slope, 
-                                               concat=True)
+                                               concat=True,
+                                               add_self_loops=add_self_loops)
             self.convs.append(HeteroConv(conv_dict, aggr='sum'))
 
         if causal:
@@ -50,10 +52,12 @@ class GAT(GNN):
                 conv_dict = {}
                 for edge_type in metadata[1]:
                     in_ch = hidden_dim if l == 0 else hidden_dim * heads[l-1]
+                    add_self_loops = edge_type[0] == edge_type[2]
                     conv_dict[edge_type] = GATConv(in_ch, hidden_dim, heads[l], 
                                                    dropout=attn_drop, 
                                                    negative_slope=negative_slope, 
-                                                   concat=True)
+                                                   concat=True,
+                                                   add_self_loops=add_self_loops)
                 self.rand_convs.append(HeteroConv(conv_dict, aggr='sum'))
 
     def forward(self, x_dict, edge_index_dict, out_key, task):

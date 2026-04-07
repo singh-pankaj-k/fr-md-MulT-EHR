@@ -66,8 +66,12 @@ class Pretrainer:
         hidden_dim = 128
         for ntype in self.graph.node_types:
             num_nodes = self.graph[ntype].num_nodes
-            # Use normal distribution for initialization
-            self.graph[ntype].x = torch.randn(num_nodes, hidden_dim)
+            # Ensure the node feature matrix exists and has the correct size
+            if num_nodes > 0:
+                self.graph[ntype].x = torch.randn(num_nodes, hidden_dim)
+            else:
+                # Handle empty node types - still need a feature matrix for PyG HGTConv
+                self.graph[ntype].x = torch.zeros(0, hidden_dim)
             print(f"Node type '{ntype}': {num_nodes} nodes, features initialized.")
 
         # Save embeddings

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, HeteroConv, Linear
+from torch_geometric.nn import GraphConv, HeteroConv, Linear
 from .GNN import GNN
 
 class GCN(GNN):
@@ -25,7 +25,7 @@ class GCN(GNN):
         for _ in range(n_layers):
             conv_dict = {}
             for edge_type in metadata[1]:
-                conv_dict[edge_type] = GCNConv(hidden_dim, hidden_dim)
+                conv_dict[edge_type] = GraphConv(hidden_dim, hidden_dim)
             self.convs.append(HeteroConv(conv_dict, aggr='sum'))
 
         if causal:
@@ -33,7 +33,7 @@ class GCN(GNN):
             for _ in range(n_layers):
                 conv_dict = {}
                 for edge_type in metadata[1]:
-                    conv_dict[edge_type] = GCNConv(hidden_dim, hidden_dim)
+                    conv_dict[edge_type] = GraphConv(hidden_dim, hidden_dim)
                 self.rand_convs.append(HeteroConv(conv_dict, aggr='sum'))
 
     def forward(self, x_dict, edge_index_dict, out_key, task):

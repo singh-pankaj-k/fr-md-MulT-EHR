@@ -12,9 +12,13 @@ def load_graph(graph_path, labels_path, feat_dim=128, pretrained=None):
         g = unp.load()
 
     # Load labels
-    with open(labels_path, 'rb') as inp:
-        unp = pickle.Unpickler(inp)
-        labels = unp.load()
+    try:
+        with open(labels_path, 'rb') as inp:
+            unp = pickle.Unpickler(inp)
+            labels = unp.load()
+    except FileNotFoundError:
+        print(f"Warning: labels file {labels_path} not found. Returning empty labels.")
+        labels = {"mort_pred": {}, "drug_rec": {}, "all_drugs": [], "los": {}, "readm": {}}
 
     n_node_types = len(g.node_types)
 

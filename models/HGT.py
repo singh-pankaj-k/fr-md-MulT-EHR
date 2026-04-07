@@ -49,32 +49,39 @@ class HGT(GNN):
         return out
 
     def get_logit(self, x_dict, edge_index_dict, causal=False):
+        # Filter x_dict and edge_index_dict to only include node/edge types that exist in the current graph
+        metadata_node_types = self.metadata[0]
+        metadata_edge_types = self.metadata[1]
+
+        # Ensure all node types from metadata are in x_dict and have enough capacity BEFORE linear
+        if len(x_dict) > 0:
+            device = next(iter(x_dict.values())).device
+        else:
+            device = torch.device('cpu')
+
+        for ntype in metadata_node_types:
+            max_idx = -1
+            for (src, rel, dst), edge_index in edge_index_dict.items():
+                if src == ntype:
+                    if edge_index.size(1) > 0:
+                        max_idx = max(max_idx, int(edge_index[0].max().item()))
+                if dst == ntype:
+                    if edge_index.size(1) > 0:
+                        max_idx = max(max_idx, int(edge_index[1].max().item()))
+            
+            num_nodes_needed = max_idx + 1
+            
+            if ntype not in x_dict or x_dict[ntype] is None:
+                x_dict[ntype] = torch.zeros((max(0, num_nodes_needed), self.n_inp), device=device)
+            elif x_dict[ntype].size(0) < num_nodes_needed:
+                padding = torch.zeros((num_nodes_needed - x_dict[ntype].size(0), self.n_inp), device=device)
+                x_dict[ntype] = torch.cat([x_dict[ntype], padding], dim=0)
+
         # Initial linear transformation
-        # Filter x_dict to only include node types present in self.lin_dict
         x_dict = {
             node_type: self.lin_dict[node_type](x).relu()
             for node_type, x in x_dict.items() if node_type in self.lin_dict
         }
-
-        # Filter edge_index_dict to only include edge types present in x_dict
-        # and skip empty edge types. Also, HGTConv expects all node types in metadata
-        # to be present in x_dict even if they have no edges.
-        
-        # Ensure all node types from metadata are in x_dict
-        metadata_node_types = self.metadata[0]
-        # Find any existing device from x_dict
-        device = next(iter(x_dict.values())).device
-        
-        for ntype in metadata_node_types:
-            if ntype not in x_dict:
-                # If a node type is missing but is in metadata, 
-                # initialize it with zeros on the correct device.
-                x_dict[ntype] = torch.zeros((0, self.n_hid), device=device)
-
-        # HGTConv in forward() computes k_dict and v_dict for ALL node types in metadata
-        # regardless of whether they have edges in edge_index_dict.
-        # However, our get_logit only transforms node types that were in the input x_dict.
-        # If a node type was in metadata but NOT in input x_dict, it will be missing from k_dict/v_dict.
 
         filtered_edge_index_dict = {}
         for (src, rel, dst), edge_index in edge_index_dict.items():
@@ -85,10 +92,22 @@ class HGT(GNN):
         
         for conv in convs:
             # Re-ensure all metadata node types are in x_dict before each conv
-            # because HGTConv might return a dict with only active node types
             for ntype in metadata_node_types:
+                max_idx = -1
+                for (src, rel, dst), edge_index in filtered_edge_index_dict.items():
+                    if src == ntype:
+                        max_idx = max(max_idx, int(edge_index[0].max().item()))
+                    if dst == ntype:
+                        max_idx = max(max_idx, int(edge_index[1].max().item()))
+                
+                num_nodes_needed = max_idx + 1
                 if ntype not in x_dict:
-                    x_dict[ntype] = torch.zeros((0, self.n_hid), device=device)
-            x_dict = conv(x_dict, filtered_edge_index_dict)
+                    x_dict[ntype] = torch.zeros((max(0, num_nodes_needed), self.n_hid), device=device)
+                elif x_dict[ntype].size(0) < num_nodes_needed:
+                    padding = torch.zeros((num_nodes_needed - x_dict[ntype].size(0), self.n_hid), device=device)
+                    x_dict[ntype] = torch.cat([x_dict[ntype], padding], dim=0)
+
+            if len(filtered_edge_index_dict) > 0:
+                x_dict = conv(x_dict, filtered_edge_index_dict)
         
         return x_dict
