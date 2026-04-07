@@ -10,15 +10,16 @@ echo "================================================================"
 echo "Starting Multi-task Heterogeneous Graph Learning Pipeline"
 echo "================================================================"
 
-# 1. Create Graph (using pyhealth dev mode for speed)
+# 1. Create Graph (using small dataset subset for dev)
 echo ""
-echo "Step 1: Creating heterogeneous graph (Dev Mode)..."
+echo "Step 1: Creating heterogeneous graph..."
 
 # Enable MPS fallback for better compatibility on macOS
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 
 # You can change the config file here (e.g., configs/construct_graph/MIMIC4.yml)
-python run_graph_creation_dev.py configs/construct_graph/MIMIC4.yml
+# Dev mode uses dev_mimiciv (1000 patients), production uses full mimiciv
+python run_graph_creation.py configs/construct_graph/MIMIC4.yml
 
 # 2. Pretrain Embeddings
 echo ""

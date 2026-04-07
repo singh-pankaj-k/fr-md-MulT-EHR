@@ -11,12 +11,12 @@ def main(config_file="configs/construct_graph/MIMIC4.yml"):
         config = yaml.load(f, loader)
         print(f"Loaded configs from {opt_path}")
 
-    # Set dev=True in the config
-    config["dev"] = True
+    # Set dev=False explicitly as per requirement (only data changes between dev and full)
+    config["dev"] = False
     
     graph_constructor = GraphConstructor(config)
     
-    print("Starting graph construction in dev mode...")
+    print("Starting graph construction...")
     graph_constructor.load_mimic()
     graph_constructor.construct_graph()
     graph_constructor.set_tasks()

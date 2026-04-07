@@ -14,3 +14,11 @@
     "NEW INSTRUCTION": "WHEN platform is macOS THEN omit DGL from requirements and document an alternative backend"
 }
 
+[2026-04-07 13:06] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "dev mode handling",
+    "EXPECTATION": "Pipeline should always run with dev=False; only dataset differs between dev and full training.",
+    "NEW INSTRUCTION": "WHEN configuring any pipeline stage THEN force dev=False in code and configs"
+}
+
