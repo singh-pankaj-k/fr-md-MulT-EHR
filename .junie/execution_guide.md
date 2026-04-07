@@ -24,7 +24,7 @@ python main.py
 #### Training and Evaluation
 The primary way to train and evaluate models is through `main.py`.
 1. Set `mode = "train"` in `main.py`.
-2. Configure `config_name` in `main.main()` (e.g., `HGT_Causal_MIMIC3.yml`).
+2. Configure `config_name` in `main.main()` (e.g., `HGT_Causal_MIMIC4.yml`).
 3. Run:
 ```bash
 python main.py

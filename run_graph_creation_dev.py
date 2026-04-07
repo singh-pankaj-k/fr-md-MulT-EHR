@@ -4,7 +4,7 @@ from utils import ordered_yaml
 import yaml
 import sys
 
-def main(config_file="configs/construct_graph/MIMIC3.yml"):
+def main(config_file="configs/construct_graph/MIMIC4.yml"):
     opt_path = Path(config_file)
     with open(opt_path, mode='r') as f:
         loader, _ = ordered_yaml()
@@ -48,5 +48,5 @@ def main(config_file="configs/construct_graph/MIMIC3.yml"):
     print("Graph construction completed.")
 
 if __name__ == '__main__':
-    config = sys.argv[1] if len(sys.argv) > 1 else "configs/construct_graph/MIMIC3.yml"
+    config = sys.argv[1] if len(sys.argv) > 1 else "configs/construct_graph/MIMIC4.yml"
     main(config)
