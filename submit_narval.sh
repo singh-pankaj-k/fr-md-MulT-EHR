@@ -42,7 +42,7 @@ fi
 
 # 3. Environment variables for production run
 export MODE=full
-export CUDA_VISIBLE_DEVICES=0,1,2,3      # Use all 4 GPUs if requested
+# CUDA_VISIBLE_DEVICES is handled internally by run_train.py for parallel training
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # Memory optimization
 export OMP_NUM_THREADS=12                # 48 CPU cores / 4 GPUs = 12 threads per GPU
 
@@ -55,7 +55,7 @@ echo "Cleaning environment for production run..."
 ./cleanup.sh
 
 # 5. Execute the full pipeline
-# This will run: Graph Creation -> Pretraining -> Training (4 models) -> Benchmarking
+# This will run: Graph Creation -> Pretraining -> Training (4 models in parallel) -> Benchmarking
 # for both MIMIC-IV and MIMIC-III.
 echo "Starting full pipeline execution at $(date)"
 ./run_full_pipeline.sh

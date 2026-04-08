@@ -1,6 +1,7 @@
 import sys
 import os
 import yaml
+import multiprocessing
 from utils import load_config
 from trainers import (
     GNNTrainer,
@@ -9,7 +10,11 @@ from trainers import (
     BaselinesTrainer
 )
 
-def run_model(config_name, train_type_override=None):
+def run_model(config_name, train_type_override=None, gpu_id=None):
+    if gpu_id is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        print(f"Setting CUDA_VISIBLE_DEVICES={gpu_id} for process {os.getpid()}")
+
     config = load_config(config_name)
     
     if train_type_override:
@@ -27,7 +32,7 @@ def run_model(config_name, train_type_override=None):
         if "n_samples" in config["train"]:
             config["train"]["n_samples"] = int(os.environ.get("DEV_SAMPLES", 100))
     
-    print(f"Starting training with {config_name} (type: {config['train_type']})")
+    print(f"Starting training with {config_name} (type: {config['train_type']}) on GPU {gpu_id}")
 
     if config["train_type"] == "gnn":
         trainer = GNNTrainer(config)
@@ -48,29 +53,44 @@ def run_model(config_name, train_type_override=None):
         return
     
     trainer.train()
-    print(f"Training completed for {config['train_type']}.")
+    print(f"Training completed for {config['train_type']} on GPU {gpu_id}.")
 
 def main(config_name="HGT_Causal_MIMIC4.yml"):
-    # The user wants to run all models one after another.
-    # We will use the provided config as a base and run all 4 types if applicable,
-    # or look for corresponding config files.
+    # The user wants to run all models simultaneously on different GPUs.
+    # We will use multiprocessing to run all 4 types in parallel.
     
     dataset = "MIMIC4" if "MIMIC4" in config_name else "MIMIC3"
     
-    print(f"Running all models for {dataset}...")
+    print(f"Running all models for {dataset} in parallel on 4 GPUs...")
     
-    # 1. Causal GNN (Main)
-    run_model(f"HGT_Causal_{dataset}.yml")
+    configs_to_run = [
+        (f"HGT_Causal_{dataset}.yml", None, 0),
+        (f"HGT_{dataset}.yml", None, 1),
+        (f"HGT_ST_{dataset}.yml", None, 2),
+        (f"Baselines_{dataset}.yml", None, 3)
+    ]
     
-    # 2. Standard GNN
-    run_model(f"HGT_{dataset}.yml")
+    processes = []
+    for conf, override, gpu in configs_to_run:
+        p = multiprocessing.Process(target=run_model, args=(conf, override, gpu))
+        p.start()
+        processes.append(p)
     
-    # 3. Causal GNN ST
-    run_model(f"HGT_ST_{dataset}.yml")
-    
-    # 4. Baselines
-    run_model(f"Baselines_{dataset}.yml")
+    # Wait for all processes to finish
+    for p in processes:
+        p.join()
+        if p.exitcode != 0:
+            print(f"Warning: A training process failed with exit code {p.exitcode}")
+            sys.exit(p.exitcode)
+
+    print(f"All models for {dataset} training complete.")
 
 if __name__ == "__main__":
+    # Ensure we use 'spawn' to start processes cleanly with GPU contexts
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+        
     config_arg = sys.argv[1] if len(sys.argv) > 1 else "HGT_Causal_MIMIC4.yml"
     main(config_arg)
