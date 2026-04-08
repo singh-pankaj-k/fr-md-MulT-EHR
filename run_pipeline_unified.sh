@@ -8,7 +8,7 @@
 
 DATASET=${1:-mimiciv}
 MODE=${2:-dev}
-CLEAN=${3:-true}
+CLEAN=${3:-false}
 
 set -e # Exit immediately if a command exits with a non-zero status.
 

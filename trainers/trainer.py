@@ -31,15 +31,15 @@ class Trainer(ABC):
         self.batch_size = self.config_train['batch_size']
 
         # Load device for training
-        if torch.backends.mps.is_available():
+        self.device = get_device()
+        self.use_gpu = True if self.device.type == "cuda" else False
+        
+        # Apple Silicon optimization
+        if self.device.type == "mps":
             # Force CPU for dev-mode backprop stability on Apple Silicon 
             # if specific MPS issues occur during backprop.
-            # In regular mode, we'd use get_device().
             self.device = torch.device('cpu')
             self.use_gpu = False
-        else:
-            self.device = get_device()
-            self.use_gpu = True if self.device.type in ["cuda", "mps"] else False
 
         self.init_temperature = 1
 
