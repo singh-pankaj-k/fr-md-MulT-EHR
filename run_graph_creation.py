@@ -3,6 +3,7 @@ from construct_graph import GraphConstructor
 from utils import ordered_yaml
 import yaml
 import sys
+import os
 
 def main(config_file="configs/construct_graph/MIMIC4.yml"):
     opt_path = Path(config_file)
@@ -13,6 +14,17 @@ def main(config_file="configs/construct_graph/MIMIC4.yml"):
 
     # Set dev=False explicitly as per requirement (only data changes between dev and full)
     config["dev"] = False
+
+    # Dynamically update the raw path based on the MODE environment variable
+    # This allows a single config file to be used for both dev and full runs.
+    if os.environ.get("MODE") == "full":
+        print("Full mode detected for graph construction: Pointing to the full MIMIC dataset.")
+        if "mimiciv" in config["raw"]:
+            config["raw"] = "./data/root/mimiciv"
+        elif "mimiciii" in config["raw"]:
+            config["raw"] = "./data/root/mimiciii"
+    else:
+        print("Dev mode detected (or default): Using the dev data subset.")
     
     graph_constructor = GraphConstructor(config)
     

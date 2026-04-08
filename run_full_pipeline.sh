@@ -3,15 +3,27 @@
 # Multi-task Heterogeneous Graph Learning on EHR - Full Pipeline Script
 # This script automates the creation of graphs, pretraining of embeddings,
 # training of models, and benchmarking for both MIMIC-III and MIMIC-IV.
+# Supports MODE=dev (default) or MODE=full.
 
+MODE=${MODE:-dev}
 set -e # Exit immediately if a command exits with a non-zero status.
 
 echo "================================================================"
-echo "Starting Full Multi-task EHR Pipeline (MIMIC-IV and MIMIC-III)"
+echo "Starting Multi-task EHR Pipeline (MIMIC-IV and MIMIC-III)"
+echo "MODE: $MODE"
 echo "================================================================"
 
 # Enable MPS fallback for better compatibility on macOS
 export PYTORCH_ENABLE_MPS_FALLBACK=1
+export MODE=$MODE
+
+# Set dev-mode hyperparameter defaults if in dev mode
+if [ "$MODE" == "dev" ]; then
+    export DEV_EPOCHS=${DEV_EPOCHS:-2}
+    export DEV_BATCH_SIZE=${DEV_BATCH_SIZE:-1024}
+    export DEV_SAMPLES=${DEV_SAMPLES:-100}
+    export DEV_PRETRAIN_EPOCHS=${DEV_PRETRAIN_EPOCHS:-2}
+fi
 
 # --- MIMIC-IV Pipeline ---
 echo ""

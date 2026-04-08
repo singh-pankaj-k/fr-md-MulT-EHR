@@ -42,17 +42,26 @@ The download of the data is available at [PhysioNet](https://physionet.org/). Yo
 
 The processed data (in `pkl` formats) will be stored in the respective subdirectory under the `data` folder. You may call `main.py` to start a training. Exemplar training configurations are provided in `./configs` in yaml formats. Benchmarking is also available in `benchmark.py`. Testing performance will be recorded after every epoch. We adopt `wandb` for results management and results will be uploaded to `wandb` online if switched on. 
 
-### Quick Start
+### Execution Guide
 
+The project provides unified scripts to run the entire pipeline (Graph Creation -> Pre-training -> Training -> Benchmarking).
+
+**Development Mode (Fast, 1000-patient subset):**
 ```bash
-python main.py --config configs/HGT_MT_MIMIC4.yml
+./run_pipeline_unified.sh mimiciv dev
+```
+Or for both datasets:
+```bash
+./run_full_pipeline.sh
 ```
 
-## Acknowledgement
+**Production Mode (Full data, full parameters):**
+```bash
+export MODE=full
+./run_full_pipeline.sh
+```
 
-We implement our method based on the [pyhealth](https://pyhealth.readthedocs.io/en/latest/) package.
-
-## Citations
+### Citations
 
 If you find our work useful, please cite us at:
 
