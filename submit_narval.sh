@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=MulT-EHR-Full
-#SBATCH --account=rrg-mahyarh
 #SBATCH --nodes=1
+#SBATCH --gpus-per-node=a100:4
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=48
+#SBATCH --mem=0
 #SBATCH --time=48:00:00
-#SBATCH --gres=gpu:a100:1
+#SBATCH --exclusive
+#SBATCH --account=rrg-mahyarh
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 #SBATCH --mail-type=ALL
@@ -16,30 +17,38 @@
 # MulT-EHR Full Production Submission Script (Narval Cluster)
 # ==============================================================================
 # This script runs the full end-to-end pipeline (MIMIC-IV and MIMIC-III)
-# in production mode using a single A100 GPU.
+# in production mode using A100 GPUs.
 # ==============================================================================
 
-# 1. Load required modules (Adjust based on cluster environment)
-module load python/3.10
-module load cuda/11.8
+set -e                                   # Exit script on any error
+
+# 1. Load required modules
+module purge
+module load python/3.11.5                # Load Python 3.11.5
+module load gcc arrow/17.0.0             # Load GCC and Apache Arrow
 
 # 2. Setup virtual environment
-if [ ! -d ".venv_narval" ]; then
-    echo "Creating virtual environment..."
-    python -m venv .venv_narval
-    source .venv_narval/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
-    # Ensure torch-geometric is installed with the correct CUDA backend
-    pip install torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
+VENV_DIR=".venv_narval"
+if [ ! -d "$VENV_DIR" ]; then             # Create venv if missing
+    echo "Creating virtual environment at $VENV_DIR..."
+    python -m venv --system-site-packages "$VENV_DIR"
+    source "$VENV_DIR/bin/activate"
+    python -m pip install --upgrade pip
+    # Install project in editable mode as preferred on Narval
+    python -m pip install --editable .
 else
-    source .venv_narval/bin/activate
+    source "$VENV_DIR/bin/activate"
 fi
 
 # 3. Environment variables for production run
 export MODE=full
-export PYTORCH_ENABLE_MPS_FALLBACK=0  # Not needed on Linux/CUDA
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2,3      # Use all 4 GPUs if requested
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # Memory optimization
+export OMP_NUM_THREADS=12                # 48 CPU cores / 4 GPUs = 12 threads per GPU
+
+# Check available GPUs
+echo "Using GPUs: $CUDA_VISIBLE_DEVICES"
+nvidia-smi
 
 # 4. Cleanup previous artifacts to ensure a fresh start
 echo "Cleaning environment for production run..."
