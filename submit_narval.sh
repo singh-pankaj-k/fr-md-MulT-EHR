@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
 #SBATCH --mem=0
-#SBATCH --time=48:00:00
+#SBATCH --time=2:00:00
 #SBATCH --exclusive
 #SBATCH --account=def-mahyarh
 #SBATCH --output=%x-%j.out
