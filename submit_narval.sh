@@ -32,15 +32,21 @@ VENV_DIR=".venv_narval"
 if [ ! -d "$VENV_DIR" ]; then             # Create venv if missing
     echo "Creating virtual environment at $VENV_DIR..."
     python -m venv --system-site-packages "$VENV_DIR"
-    source "$VENV_DIR/bin/activate"
-    python -m pip install --upgrade pip
-    # Install project in editable mode as preferred on Narval
-    # Using --no-build-isolation to avoid network requests for build tools (offline mode)
-    # Using --no-index to ensure we only use local/cached/system wheels
-    python -m pip install --editable . --no-build-isolation --no-index
-else
-    source "$VENV_DIR/bin/activate"
 fi
+
+source "$VENV_DIR/bin/activate"
+python -m pip install --upgrade pip --no-index
+
+echo "Installing/Updating dependencies from Compute Canada wheelhouse..."
+# We explicitly install extension packages first, then requirements, then the project itself.
+# --no-index ensures we only use local/cached/system wheels as requested by Narval.
+python -m pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric
+python -m pip install --no-index -r requirements.txt
+python -m pip install --editable . --no-build-isolation --no-index
+
+# Verification step: Ensure torch_geometric is imported correctly
+echo "Verifying torch_geometric installation..."
+python -c "import torch_geometric; print('torch_geometric version:', torch_geometric.__version__)" || { echo "ERROR: torch_geometric failed to import!"; exit 1; }
 
 # 3. Environment variables for production run
 export MODE=full
