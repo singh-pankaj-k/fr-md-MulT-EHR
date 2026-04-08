@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from typing import Optional, Dict, Generator, Tuple
+from typing import Optional, Dict, Generator, Tuple, Union
 from collections import OrderedDict
 
 
@@ -35,7 +35,7 @@ class CheckpointManager:
             path = self.path
         return path / "configs.json"
 
-    def get_model_file(self, version: int, path: Optional[Path] = None) -> Path or Tuple:
+    def get_model_file(self, version: int, path: Optional[Path] = None) -> Union[Path, Tuple]:
         if path is None:
             path = self.path
 
@@ -73,7 +73,7 @@ class CheckpointManager:
 
     def save_model(
             self,
-            state_dicts: Dict[str, torch.Tensor] or Tuple,
+            state_dicts: Union[Dict[str, torch.Tensor], Tuple],
     ) -> None:
         """
         Save the embeddings into respective paths
@@ -106,11 +106,11 @@ class CheckpointManager:
             else:
                 return int(version_string)
 
-    def write_new_version(
+    def save_checkpoint(
             self,
-            config: Dict,
-            state_dict: Optional[Dict[str, torch.Tensor] or Tuple],
-            epoch_stats: Dict = None,
+            state_dict: Union[Dict[str, torch.Tensor], Tuple],
+            epoch_stats: Dict,
+            config: Optional[Dict] = None,
     ) -> None:
         """
         Write new version of checkpoint
@@ -119,7 +119,7 @@ class CheckpointManager:
         :param epoch_stats: dictionary of stats
         :return:
         """
-        if self.version == 0:
+        if self.version == 0 and config is not None:
             self.save_config(config)
 
         # Update to new version
@@ -133,9 +133,19 @@ class CheckpointManager:
         # Save training stats here
         # Format epoch stat
         for s, v in epoch_stats.items():
-            if type(v) != int:
+            if not isinstance(v, (int, float)):
+                continue
+            if isinstance(v, float):
                 epoch_stats[s] = round(v, 5)
         self.append_stats(epoch_stats)
+
+    def write_new_version(
+            self,
+            config: Dict,
+            state_dict: Optional[Union[Dict[str, torch.Tensor], Tuple]],
+            epoch_stats: Dict = None,
+    ) -> None:
+        self.save_checkpoint(state_dict, epoch_stats, config)
 
     def remove_old_version(self) -> None:
         old_version = self.old_version

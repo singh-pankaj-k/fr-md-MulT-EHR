@@ -3,6 +3,7 @@ Trainer of baseline models
 """
 
 import pickle
+import torch
 
 import pyhealth
 from pyhealth.trainer import Trainer
@@ -51,14 +52,72 @@ class BaselinesTrainer(MyTrainer):
             output_path=self.checkpoint_manager.path
         )
 
-    def train(self):
+    def load_checkpoint(self):
+        if self.checkpoint_manager.version > 0:
+            print(f"Loading checkpoint version {self.checkpoint_manager.version}...")
+            try:
+                # For baselines, we use the PyHealth trainer's load_ckpt logic
+                # But we can also use our bundled checkpoint
+                checkpoint = self.checkpoint_manager.load_model()
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    self.trainer.model.load_state_dict(checkpoint['model_state_dict'])
+                    if 'optimizer_state_dict' in checkpoint:
+                        # We need to ensure trainer has an optimizer before loading
+                        # pyhealth.trainer.Trainer initializes it in train()
+                        # so we might need to trigger it or do it manually
+                        if not hasattr(self.trainer, "optimizer") or self.trainer.optimizer is None:
+                            # Mock call to trigger optimizer initialization
+                            # Actually better to just do it manually here if we want to load state
+                            param = list(self.trainer.model.named_parameters())
+                            no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+                            optimizer_grouped_parameters = [
+                                {"params": [p for n, p in param if not any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+                                {"params": [p for n, p in param if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+                            ]
+                            self.trainer.optimizer = torch.optim.Adam(optimizer_grouped_parameters, lr=1e-3)
+                        
+                        self.trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                    
+                    self.start_epoch = checkpoint.get('epoch', self.checkpoint_manager.version)
+                    print(f"Checkpoint loaded. Resuming from epoch {self.start_epoch}.")
+                    return self.start_epoch
+                else:
+                    self.trainer.model.load_state_dict(checkpoint)
+                    self.start_epoch = self.checkpoint_manager.version
+                    print(f"Old checkpoint loaded. Starting from epoch {self.start_epoch}.")
+                    return self.start_epoch
+            except Exception as e:
+                print(f"Error loading checkpoint: {e}. Starting from scratch.")
+        return 0
 
-        self.trainer.train(
-            train_dataloader=self.train_loader,
-            val_dataloader=self.val_loader,
-            epochs=self.n_epoch,
-            monitor=self.monitor,
-        )
+    def train(self):
+        self.load_checkpoint()
+        
+        for epoch in range(self.start_epoch, self.n_epoch):
+            print(f"Epoch {epoch+1}/{self.n_epoch}")
+            self.trainer.train(
+                train_dataloader=self.train_loader,
+                val_dataloader=self.val_loader,
+                epochs=1,
+                monitor=self.monitor,
+            )
+            
+            if self.should_save(epoch):
+                epoch_stats = {"Epoch": epoch + 1}
+                # Add some metrics if available from trainer
+                # PyHealth trainer doesn't easily expose last epoch metrics in a dict
+                # but we can at least save the model
+                checkpoint = {
+                    "model_state_dict": self.trainer.model.state_dict(),
+                    "optimizer_state_dict": self.trainer.optimizer.state_dict() if hasattr(self.trainer, "optimizer") else None,
+                    "epoch": epoch + 1
+                }
+                self.checkpoint_manager.write_new_version(
+                    self.config,
+                    checkpoint,
+                    epoch_stats
+                )
+                self.checkpoint_manager.remove_old_version()
 
     def visualize_embeddings(self):
 

@@ -74,10 +74,47 @@ class CausalSTGNNTrainer(Trainer):
 
         self.causal = self.config_train["causal"]
 
+    def load_checkpoint(self):
+        if self.checkpoint_manager.version > 0:
+            print(f"Loading checkpoint version {self.checkpoint_manager.version}...")
+            try:
+                checkpoint = self.checkpoint_manager.load_model()
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    model_states = checkpoint['model_state_dict']
+                    optimizer_states = checkpoint.get('optimizer_state_dict', {})
+                    
+                    if isinstance(model_states, dict):
+                        for t, state in model_states.items():
+                            if t in self.gnns:
+                                self.gnns[t].load_state_dict(state)
+                        for t, state in optimizer_states.items():
+                            if t in self.optimizers:
+                                self.optimizers[t].load_state_dict(state)
+                    else:
+                        # Fallback if it was just one model saved (though it shouldn't be for ST)
+                        if "readm" in self.gnns:
+                            self.gnns["readm"].load_state_dict(model_states)
+                    
+                    self.start_epoch = checkpoint.get('epoch', self.checkpoint_manager.version)
+                    print(f"Checkpoint loaded. Resuming from epoch {self.start_epoch}.")
+                    return self.start_epoch
+                else:
+                    # Fallback for old checkpoints
+                    if "readm" in self.gnns:
+                        self.gnns["readm"].load_state_dict(checkpoint)
+                    self.start_epoch = self.checkpoint_manager.version
+                    print(f"Old checkpoint loaded. Starting from epoch {self.start_epoch}.")
+                    return self.start_epoch
+            except Exception as e:
+                print(f"Error loading checkpoint: {e}. Starting from scratch.")
+        return 0
+
     def train(self) -> None:
         print(f"Start training GNN")
 
-        training_range = tqdm(range(self.n_epoch), nrows=3)
+        self.load_checkpoint()
+
+        training_range = tqdm(range(self.start_epoch, self.n_epoch), nrows=3)
 
         for epoch in training_range:
             self.set_mode("train")
@@ -122,14 +159,21 @@ class CausalSTGNNTrainer(Trainer):
             epoch_stats.update(test_metrics)
             self.visualize_embeddings()
             self.logging(loss, train_metrics, test_metrics)
-            self.checkpoint_manager.write_new_version(
-                self.config,
-                self.gnns["readm"].state_dict(),
-                epoch_stats
-            )
 
-            # Remove previous checkpoint
-            self.checkpoint_manager.remove_old_version()
+            if self.should_save(epoch):
+                checkpoint = {
+                    "model_state_dict": {t: model.state_dict() for t, model in self.gnns.items()},
+                    "optimizer_state_dict": {t: opt.state_dict() for t, opt in self.optimizers.items()},
+                    "epoch": epoch + 1
+                }
+                self.checkpoint_manager.write_new_version(
+                    self.config,
+                    checkpoint,
+                    epoch_stats
+                )
+
+                # Remove previous checkpoint
+                self.checkpoint_manager.remove_old_version()
 
     def evaluate(self):
         self.set_mode("eval")

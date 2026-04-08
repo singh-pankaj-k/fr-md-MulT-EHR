@@ -88,7 +88,9 @@ class CausalGNNTrainer(Trainer):
     def train(self) -> None:
         print(f"Start training GNN")
 
-        training_range = tqdm(range(self.n_epoch), nrows=3)
+        self.load_checkpoint()
+
+        training_range = tqdm(range(self.start_epoch, self.n_epoch), nrows=3)
 
         for epoch in training_range:
             self.gnn.train()
@@ -161,14 +163,22 @@ class CausalGNNTrainer(Trainer):
             # self.interpret()
             self.logging(loss, train_metrics, test_metrics)
             self.visualize_embeddings()
-            self.checkpoint_manager.write_new_version(
-                self.config,
-                self.gnn.state_dict(),
-                epoch_stats
-            )
 
-            # Remove previous checkpoint
-            self.checkpoint_manager.remove_old_version()
+            if self.should_save(epoch):
+                # State dict of the model including embeddings
+                checkpoint = {
+                    "model_state_dict": self.gnn.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "epoch": epoch + 1
+                }
+                self.checkpoint_manager.write_new_version(
+                    self.config,
+                    checkpoint,
+                    epoch_stats
+                )
+
+                # Remove previous checkpoint
+                self.checkpoint_manager.remove_old_version()
 
     def evaluate(self):
         self.gnn.eval()

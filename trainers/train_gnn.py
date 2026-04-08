@@ -55,7 +55,9 @@ class GNNTrainer(Trainer):
     def train(self) -> None:
         print(f"Start training GNN")
 
-        training_range = tqdm(range(self.n_epoch), nrows=3)
+        self.load_checkpoint()
+
+        training_range = tqdm(range(self.start_epoch, self.n_epoch), nrows=3)
 
         for epoch in training_range:
             self.gnn.train()
@@ -90,7 +92,6 @@ class GNNTrainer(Trainer):
             train_metrics = metrics(preds, labels, "readm", prefix="train")
 
             # Perform validation and testing
-            self.checkpoint_manager.save_model(self.gnn.state_dict())
             test_metrics = self.evaluate()
 
             training_range.set_description_str("Epoch {} | loss: {:.4f}| Train AUC: {:.4f} | Test AUC: {:.4f} | Test ACC: {:.4f} ".format(
@@ -100,15 +101,21 @@ class GNNTrainer(Trainer):
             epoch_stats.update(train_metrics)
             epoch_stats.update(test_metrics)
 
-            # State dict of the model including embeddings
-            self.checkpoint_manager.write_new_version(
-                self.config,
-                self.gnn.state_dict(),
-                epoch_stats
-            )
+            if self.should_save(epoch):
+                # State dict of the model including embeddings
+                checkpoint = {
+                    "model_state_dict": self.gnn.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "epoch": epoch + 1
+                }
+                self.checkpoint_manager.write_new_version(
+                    self.config,
+                    checkpoint,
+                    epoch_stats
+                )
 
-            # Remove previous checkpoint
-            self.checkpoint_manager.remove_old_version()
+                # Remove previous checkpoint
+                self.checkpoint_manager.remove_old_version()
 
     def evaluate(self):
         self.gnn.eval()

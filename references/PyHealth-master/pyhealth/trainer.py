@@ -154,19 +154,21 @@ class Trainer:
         logger.info(f"Epochs: {epochs}")
 
         # set optimizer
-        param = list(self.model.named_parameters())
-        no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in param if not any(nd in n for nd in no_decay)],
-                "weight_decay": weight_decay,
-            },
-            {
-                "params": [p for n, p in param if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
-            },
-        ]
-        optimizer = optimizer_class(optimizer_grouped_parameters, **optimizer_params)
+        if not hasattr(self, "optimizer") or self.optimizer is None:
+            param = list(self.model.named_parameters())
+            no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in param if not any(nd in n for nd in no_decay)],
+                    "weight_decay": weight_decay,
+                },
+                {
+                    "params": [p for n, p in param if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            self.optimizer = optimizer_class(optimizer_grouped_parameters, **optimizer_params)
+        optimizer = self.optimizer
 
         # initialize
         data_iterator = iter(train_dataloader)
@@ -303,14 +305,23 @@ class Trainer:
 
     def save_ckpt(self, ckpt_path: str) -> None:
         """Saves the model checkpoint."""
-        state_dict = self.model.state_dict()
+        state_dict = {
+            "model_state_dict": self.model.state_dict(),
+        }
+        if hasattr(self, "optimizer") and self.optimizer is not None:
+            state_dict["optimizer_state_dict"] = self.optimizer.state_dict()
         torch.save(state_dict, ckpt_path)
         return
 
     def load_ckpt(self, ckpt_path: str) -> None:
         """Saves the model checkpoint."""
-        state_dict = torch.load(ckpt_path, map_location=self.device)
-        self.model.load_state_dict(state_dict)
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            if hasattr(self, "optimizer") and self.optimizer is not None and "optimizer_state_dict" in checkpoint:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        else:
+            self.model.load_state_dict(checkpoint)
         return
 
 

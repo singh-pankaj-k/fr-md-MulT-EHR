@@ -42,6 +42,38 @@ class Trainer(ABC):
             self.use_gpu = False
 
         self.init_temperature = 1
+        self.start_epoch = 0
+
+    def load_checkpoint(self):
+        if self.checkpoint_manager.version > 0:
+            print(f"Loading checkpoint version {self.checkpoint_manager.version}...")
+            try:
+                checkpoint = self.checkpoint_manager.load_model()
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    if hasattr(self, 'gnn') and self.gnn is not None:
+                        self.gnn.load_state_dict(checkpoint['model_state_dict'])
+                    if hasattr(self, 'optimizer') and self.optimizer is not None and 'optimizer_state_dict' in checkpoint:
+                        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                    
+                    self.start_epoch = checkpoint.get('epoch', self.checkpoint_manager.version)
+                    print(f"Checkpoint loaded. Resuming from epoch {self.start_epoch}.")
+                    return self.start_epoch
+                else:
+                    # Fallback for old checkpoints
+                    if hasattr(self, 'gnn') and self.gnn is not None:
+                        self.gnn.load_state_dict(checkpoint)
+                    self.start_epoch = self.checkpoint_manager.version
+                    print(f"Old checkpoint loaded. Starting from epoch {self.start_epoch}.")
+                    return self.start_epoch
+            except Exception as e:
+                print(f"Error loading checkpoint: {e}. Starting from scratch.")
+        return 0
+
+    def should_save(self, epoch):
+        # Save if it's the last epoch or according to freq
+        if (epoch + 1) == self.n_epoch:
+            return True
+        return (epoch + 1) % self.save_steps == 0
 
     def train(self) -> None:
         raise NotImplementedError
