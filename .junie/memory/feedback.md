@@ -30,3 +30,11 @@
     "NEW INSTRUCTION": "WHEN creating task-specific heads THEN set num_classes from dataset label mapping"
 }
 
+[2026-04-08 09:28] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "cluster resources",
+    "EXPECTATION": "Production runs on Narval should use requested GPUs (A100s) and multiple CPUs; the last job ran on 1 CPU with no GPU.",
+    "NEW INSTRUCTION": "WHEN running on Narval cluster THEN request 4 A100 GPUs and >=8 CPUs via SLURM"
+}
+
