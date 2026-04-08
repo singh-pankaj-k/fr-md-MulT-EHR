@@ -60,9 +60,9 @@ class CausalSTGNNTrainer(Trainer):
         self.edge_index_dict = self.graph.edge_index_dict
 
         # Read node_dict
-        # self.node_dict = {}
-        # for tp in self.graph.ntypes:
-        #     self.node_dict.update({tp: torch.arange(self.graph.num_nodes(tp))})
+        self.node_dict = {}
+        for tp in self.graph.node_types:
+            self.node_dict.update({tp: torch.arange(self.graph[tp].num_nodes)})
 
         self.gnns = {}
         for t in self.tasks:
@@ -89,9 +89,9 @@ class CausalSTGNNTrainer(Trainer):
                 self.optimizers[t].zero_grad()
                 indices, labels = self.get_indices_labels(t)
 
-                # sg = self.get_subgraphs(indices, "visit")
+                x_dict, edge_index_dict = self.get_subgraphs(indices, "visit")
 
-                preds, rand_feat, _ = self.gnns[t](self.x_dict, self.edge_index_dict, "visit", t)
+                preds, rand_feat, _ = self.gnns[t](x_dict, edge_index_dict, "visit", t)
                 preds = preds[indices]
 
                 unif_loss = self.unif_loss(rand_feat) if self.causal else 0
@@ -140,35 +140,15 @@ class CausalSTGNNTrainer(Trainer):
             sg = self.get_subgraphs(indices, "visit")
 
             with torch.no_grad():
-                preds, _, _ = self.gnns[t](sg, "visit", t)
-                if t == "drug_rec":
-                    preds = preds.sigmoid()
+                preds, _, _ = self.gnns[t](self.x_dict, self.edge_index_dict, "visit", t)
+                preds = preds[indices]
 
             test_metrics.update(metrics(preds, labels, t, prefix=f"{t}"))
 
         return test_metrics
 
     def visualize_embeddings(self):
-        layout = go.Layout(
-            autosize=False,
-            width=600,
-            height=600
-        )
-        fig = go.Figure(layout=layout)
-        embeddings = self.gnn.embeddings.detach().cpu().numpy()
-
-        from sklearn.manifold import Isomap, TSNE
-
-        offset = 0
-        for k, v in self.node_dict.items():
-            indices = [i for i in range(offset, offset + 250)]
-            tsne = TSNE(n_components=2)
-            embeddings_2d = tsne.fit_transform(embeddings[indices])
-            offset += len(v)
-
-            fig.add_trace(go.Scatter(x=embeddings_2d[:, 0], y=embeddings_2d[:, 1], mode='markers', name=k))
-
-        wandb.log({"chart": fig})
+        pass
 
     def unif_loss(self, feat):
         loss_fcn = KLDivergence()
@@ -205,11 +185,9 @@ class CausalSTGNNTrainer(Trainer):
         return masks, labels
 
     def get_subgraphs(self, indices, nt):
-        d = self.node_dict.copy()
-        d[nt] = self.node_dict[nt][indices]
-        sg = self.graph.subgraph(d).to(self.device)
-
-        return sg
+        # In PyG, we just use full graph for now
+        # If true subgraphing is needed, we'd use k_hop_subgraph or similar.
+        return self.x_dict, self.edge_index_dict
 
     def get_indices_labels(self, t, train=True, cap=3000):
         indices = self.train_mask[t] if train else self.test_mask[t]

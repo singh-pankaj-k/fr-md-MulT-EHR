@@ -87,14 +87,14 @@ class GNNTrainer(Trainer):
             loss.backward()
             self.optimizer.step()
 
-            train_metrics = metrics(preds, labels, average="binary")
+            train_metrics = metrics(preds, labels, "readm", prefix="train")
 
             # Perform validation and testing
             self.checkpoint_manager.save_model(self.gnn.state_dict())
             test_metrics = self.evaluate()
 
             training_range.set_description_str("Epoch {} | loss: {:.4f}| Train AUC: {:.4f} | Test AUC: {:.4f} | Test ACC: {:.4f} ".format(
-                epoch, loss.item(), train_metrics["train_auroc"], test_metrics["test_auroc"], test_metrics["test_accuracy"]))
+                epoch, loss.item(), train_metrics["train_roc_auc"], test_metrics["test_roc_auc"], test_metrics["test_accuracy"]))
 
             epoch_stats.update({"Train Loss: ": loss.item()})
             epoch_stats.update(train_metrics)
@@ -120,7 +120,7 @@ class GNNTrainer(Trainer):
                 preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
                 preds = preds_dict[indices]
 
-        test_metrics = metrics(preds, labels, average="binary", prefix="test")
+        test_metrics = metrics(preds, labels, "readm", prefix="test")
 
         return test_metrics
 

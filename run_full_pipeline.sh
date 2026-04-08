@@ -23,16 +23,13 @@ python run_graph_creation.py configs/construct_graph/MIMIC4.yml
 echo "Step 2: Pretraining node embeddings (MIMIC-IV)..."
 python run_pretrain.py MIMIC4_TransE.yml
 
-echo "Step 3: Training models (MIMIC-IV)..."
-# Main HGT Causal model
+echo "Step 3: Training all models (MIMIC-IV)..."
+# Now run_train.py runs all models (Causal-GNN, GNN, Causal-GNN-ST, Baselines)
 python run_train.py HGT_Causal_MIMIC4.yml
-# Other models can be added here if needed for single run
-# python run_train.py GCN_Causal_MIMIC4.yml
-# python run_train.py GAT_Causal_MIMIC4.yml
 
 echo "Step 4: Running benchmarks (MIMIC-IV)..."
-# Note: benchmark.py needs to be configured to run desired benchmarks
-# For now, we'll use a modified version or ensure it runs what we want.
+# benchmark.py now just does additional ablations if needed,
+# but our main models are already trained by Step 3.
 export BENCHMARK_DATASET=MIMIC4
 python benchmark.py
 
@@ -46,7 +43,7 @@ python run_graph_creation.py configs/construct_graph/MIMIC3.yml
 echo "Step 2: Pretraining node embeddings (MIMIC-III)..."
 python run_pretrain.py MIMIC3_TransE.yml
 
-echo "Step 3: Training models (MIMIC-III)..."
+echo "Step 3: Training all models (MIMIC-III)..."
 python run_train.py HGT_Causal_MIMIC3.yml
 
 echo "Step 4: Running benchmarks (MIMIC-III)..."

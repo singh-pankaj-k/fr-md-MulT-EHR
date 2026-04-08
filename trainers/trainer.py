@@ -47,8 +47,12 @@ class Trainer(ABC):
         raise NotImplementedError
 
     def initialize_logger(self, name, notes=""):
-        tags = self.config["logging"]["tags"]
-        mode = self.config["logging"]["mode"]
+        if "logging" not in self.config:
+            print("Warning: 'logging' section missing in config. Logging disabled.")
+            return
+
+        tags = self.config["logging"].get("tags", [])
+        mode = self.config["logging"].get("mode", "disabled")
         wandb.init(name=name,
                    project='MT_EHR',
                    notes=notes,

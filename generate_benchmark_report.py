@@ -95,9 +95,13 @@ def plot_ablation(df, ablation_type, x_col, benchmark_dir):
 
 def plot_model_comparison(df, benchmark_dir):
     # Filter for main models or GNN ablation
-    comparison_df = df[df['model_type'].isin(['HGT_Causal_MIMIC4_RMDL', 'GNN_ablation'])].copy()
+    # We now have more models trained sequentially
+    main_model_types = ['HGT_Causal_MIMIC4_RMDL', 'HGT_MTCausal_MIMIC4_RMDL', 'HGT_Causal_MIMIC3_RMDL', 'HGT_MTCausal_MIMIC3_RMDL',
+                        'GNN_ablation', 'HGT_MIMIC4_Readm', 'HGT_MIMIC3_Readm', 
+                        'HGT_ST_MIMIC4_RMDL_L3', 'HGT_ST_MIMIC3_RMLD', 'AdaCare']
+    
+    comparison_df = df[df['model_type'].isin(main_model_types) | df['model_type'].str.contains('HGT_')].copy()
     if comparison_df.empty:
-        # If we only have HGT_Causal_MIMIC4_RMDL, let's just use what we have
         comparison_df = df.copy()
 
     # Map detail to model name for GNN_ablation, and include dataset if needed
