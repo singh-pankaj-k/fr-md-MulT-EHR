@@ -8,6 +8,9 @@
 MODE=${MODE:-dev}
 set -e # Exit immediately if a command exits with a non-zero status.
 
+# Step 0: Clean previous results
+./cleanup.sh
+
 echo "================================================================"
 echo "Starting Multi-task EHR Pipeline (MIMIC-IV and MIMIC-III)"
 echo "MODE: $MODE"

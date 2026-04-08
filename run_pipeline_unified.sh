@@ -21,16 +21,7 @@ echo "================================================================"
 
 # Step 0: Optionally clean previous results
 if [ "$CLEAN" == "true" ]; then
-    echo "Cleaning previous output and artifacts..."
-    rm -rf checkpoints/*
-    rm -rf data/graphs/*
-    rm -rf data/dataset_objects/*
-    rm -rf data/mimic3_objects/*
-    rm -rf benchmark/*
-    
-    # Recreate necessary directories
-    mkdir -p data/graphs data/dataset_objects data/mimic3_objects benchmark/plots
-    echo "Done cleaning."
+    ./cleanup.sh
 fi
 
 # Enable MPS fallback for better compatibility on macOS
