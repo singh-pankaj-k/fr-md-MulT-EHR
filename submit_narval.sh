@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=MulT-EHR-Full
-#SBATCH --account=def-pankajpriscilla
+#SBATCH --account=rrg-mahyarh
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --time=48:00:00
 #SBATCH --gres=gpu:a100:1
@@ -52,3 +52,6 @@ echo "Starting full pipeline execution at $(date)"
 ./run_full_pipeline.sh
 
 echo "Full pipeline execution finished at $(date)"
+
+# Submit on Narval cluster using
+# sbatch --account=rrg-mahyarh submit_narval.sh
