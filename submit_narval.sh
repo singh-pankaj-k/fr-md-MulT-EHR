@@ -7,7 +7,7 @@
 #SBATCH --mem=0
 #SBATCH --time=48:00:00
 #SBATCH --exclusive
-#SBATCH --account=rrg-mahyarh
+#SBATCH --account=def-mahyarh
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 #SBATCH --mail-type=ALL
@@ -63,4 +63,4 @@ echo "Starting full pipeline execution at $(date)"
 echo "Full pipeline execution finished at $(date)"
 
 # Submit on Narval cluster using
-# sbatch --account=rrg-mahyarh submit_narval.sh
+# sbatch --account=def-mahyarh submit_narval.sh
