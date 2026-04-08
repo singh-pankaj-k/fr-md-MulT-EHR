@@ -67,3 +67,4 @@ var/
 /benchmark/plots/model_comparison_auc.png
 /benchmark/aggregated_results.csv
 /benchmark/summary_report.md
+/.venv_narval/
