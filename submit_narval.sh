@@ -25,7 +25,7 @@ set -e                                   # Exit script on any error
 # 1. Load required modules
 module purge
 module load StdEnv/2023                # Ensure consistent software environment
-module load python/3.11.5                # Load stable Python 3.11.5
+module load python/3.12                # Use Python 3.12 (required for PyHealth 2.0 and latest wheels)
 module load gcc arrow/17.0.0             # Load GCC and Apache Arrow
 module load cuda/12.2                    # Required for GPU support in PyTorch
 module load cudnn/8.9.7.29               # Required for deep learning acceleration
