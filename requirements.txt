@@ -18,4 +18,4 @@ matplotlib
 rdkit>=2022.03.4
 pandarallel>=1.5.3
 mne>=1.0.3
--e ./references/PyHealth-master
+pyhealth

@@ -44,7 +44,15 @@ echo "Installing/Updating dependencies from Compute Canada wheelhouse..."
 # Explicitly install torch first to avoid issues with extensions
 pip install --no-index torch
 pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv
-pip install --no-index -r requirements.txt
+
+# 2.1 Setup offline bundle for pyhealth (as it is not available in standard wheelhouse)
+if [ ! -d "offline_bundle" ]; then
+    echo "Downloading pyhealth offline bundle (requires internet access, best done on login node)..."
+    pip download -d offline_bundle pyhealth
+fi
+
+echo "Installing project requirements using wheelhouse and offline bundle..."
+pip install --no-index --find-links=offline_bundle -r requirements.txt
 
 # Verification step: Ensure CUDA and torch_geometric are working
 echo "Verifying environment..."
