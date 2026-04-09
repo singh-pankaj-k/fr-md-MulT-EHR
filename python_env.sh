@@ -30,7 +30,7 @@ if [ ! -d "$VENV_DIR" ]; then
     echo "Installing/Updating dependencies from Compute Canada wheelhouse..."
     # Explicitly install torch first to avoid issues with extensions
     pip install --no-index torch
-    pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv torch_geometric
+    pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv torch_geometric PyYAML
     
     # 2.1 Setup offline bundle for pyhealth (as it is not available in standard wheelhouse)
     if [ ! -d "offline_bundle" ]; then
