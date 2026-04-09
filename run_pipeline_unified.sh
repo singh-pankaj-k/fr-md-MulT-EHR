@@ -19,9 +19,17 @@ echo "MODE:    $MODE"
 echo "CLEAN:   $CLEAN"
 echo "================================================================"
 
-# Step 0: Optionally clean previous results
+# Step 0: Optionally determine clean flag
+CLEAN_FLAG=""
 if [ "$CLEAN" == "true" ]; then
     ./cleanup.sh
+    CLEAN_FLAG="--clean"
+fi
+
+# Determine python command
+PYTHON_CMD="python"
+if ! command -v $PYTHON_CMD &> /dev/null; then
+    PYTHON_CMD="python3"
 fi
 
 # Enable MPS fallback for better compatibility on macOS
@@ -52,31 +60,32 @@ else
     exit 1
 fi
 
-# Determine config path and modify if MODE=dev
-# Note: we previously ensured configs point to dev_... folders for dev mode.
-# For full mode, we should ideally have separate configs or modify them on the fly.
-# Currently, the provided configs for MIMIC4 point to dev_mimiciv.
-# Let's assume for this session that we are running in dev mode as requested.
-
 echo ""
 echo ">>> Processing $DATASET in $MODE mode <<<"
 
 echo "Step 1: Creating heterogeneous graph..."
-python run_graph_creation.py configs/construct_graph/${CONFIG_DS}.yml
+$PYTHON_CMD run_graph_creation.py configs/construct_graph/${CONFIG_DS}.yml $CLEAN_FLAG
 
 echo "Step 2: Pretraining node embeddings..."
-python run_pretrain.py ${CONFIG_PT}.yml
+$PYTHON_CMD run_pretrain.py ${CONFIG_PT}.yml $CLEAN_FLAG
 
 echo "Step 3: Training models..."
-python run_train.py ${CONFIG_TRAIN}.yml
+# Run all 4 model variants in parallel on different GPUs if available
+# We use & to run in background and wait at the end
+# Note: On clusters like Narval, make sure you have enough GPUs allocated.
+CUDA_VISIBLE_DEVICES=0 $PYTHON_CMD run_train.py HGT_Causal_${CONFIG_DS}.yml $CLEAN_FLAG &
+CUDA_VISIBLE_DEVICES=1 $PYTHON_CMD run_train.py HGT_${CONFIG_DS}.yml $CLEAN_FLAG &
+CUDA_VISIBLE_DEVICES=2 $PYTHON_CMD run_train.py HGT_ST_${CONFIG_DS}.yml $CLEAN_FLAG &
+CUDA_VISIBLE_DEVICES=3 $PYTHON_CMD run_train.py Baselines_${CONFIG_DS}.yml $CLEAN_FLAG &
+wait
 
 echo "Step 4: Running benchmarks..."
 export BENCHMARK_DATASET=$CONFIG_DS
-python benchmark.py
+$PYTHON_CMD benchmark.py
 
 echo ""
 echo "Step 5: Generating final summary report and visualizations..."
-python generate_benchmark_report.py
+$PYTHON_CMD generate_benchmark_report.py
 
 echo ""
 echo "================================================================"

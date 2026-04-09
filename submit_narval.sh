@@ -24,25 +24,24 @@ set -e                                   # Exit script on any error
 
 # 1. Load required modules
 module purge
-module load python/3.11.5                # Load Python 3.11.5
+module load python/3.11.5                # Load stable Python 3.11.5
 module load gcc arrow/17.0.0             # Load GCC and Apache Arrow
 
 # 2. Setup virtual environment
 VENV_DIR=".venv_narval"
 if [ ! -d "$VENV_DIR" ]; then             # Create venv if missing
     echo "Creating virtual environment at $VENV_DIR..."
-    python -m venv --system-site-packages "$VENV_DIR"
+    virtualenv --no-download "$VENV_DIR"
 fi
 
 source "$VENV_DIR/bin/activate"
-python -m pip install --upgrade pip --no-index
+pip install --no-index --upgrade pip
 
 echo "Installing/Updating dependencies from Compute Canada wheelhouse..."
-# We explicitly install extension packages first, then requirements, then the project itself.
-# --no-index ensures we only use local/cached/system wheels as requested by Narval.
-python -m pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric
-python -m pip install --no-index -r requirements.txt
-python -m pip install --editable . --no-build-isolation --no-index
+# Explicitly install torch first to avoid issues with extensions
+pip install --no-index torch
+pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv
+pip install --no-index -r requirements.txt
 
 # Verification step: Ensure torch_geometric is imported correctly
 echo "Verifying torch_geometric installation..."
