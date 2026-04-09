@@ -24,15 +24,18 @@ set -e                                   # Exit script on any error
 
 # 1. Load required modules
 module purge
+module load StdEnv/2023                # Ensure consistent software environment
 module load python/3.11.5                # Load stable Python 3.11.5
 module load gcc arrow/17.0.0             # Load GCC and Apache Arrow
+module load cuda/12.2                    # Required for GPU support in PyTorch
+module load cudnn/8.9.7.29               # Required for deep learning acceleration
+module load scipy-stack                  # Optimized numpy, pandas, scipy, etc.
 
 # 2. Setup virtual environment
-VENV_DIR=".venv_narval"
-if [ ! -d "$VENV_DIR" ]; then             # Create venv if missing
-    echo "Creating virtual environment at $VENV_DIR..."
-    virtualenv --no-download "$VENV_DIR"
-fi
+# Using $SLURM_TMPDIR (local node storage) is faster and safer than shared filesystem
+VENV_DIR="$SLURM_TMPDIR/env"
+echo "Creating high-performance virtual environment at $VENV_DIR..."
+virtualenv --no-download "$VENV_DIR"
 
 source "$VENV_DIR/bin/activate"
 pip install --no-index --upgrade pip
@@ -43,9 +46,18 @@ pip install --no-index torch
 pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-conv
 pip install --no-index -r requirements.txt
 
-# Verification step: Ensure torch_geometric is imported correctly
-echo "Verifying torch_geometric installation..."
-python -c "import torch_geometric; print('torch_geometric version:', torch_geometric.__version__)" || { echo "ERROR: torch_geometric failed to import!"; exit 1; }
+# Verification step: Ensure CUDA and torch_geometric are working
+echo "Verifying environment..."
+python -c "
+import torch
+print(f'Torch version: {torch.__version__}')
+print(f'CUDA Available: {torch.cuda.is_available()}')
+print(f'GPU Count: {torch.cuda.device_count()}')
+import torch_geometric
+print(f'torch_geometric version: {torch_geometric.__version__}')
+if not torch.cuda.is_available():
+    import sys; print('ERROR: CUDA not available on compute node!'); sys.exit(1)
+" || { echo "ERROR: Verification failed!"; exit 1; }
 
 # 3. Environment variables for production run
 export MODE=full
