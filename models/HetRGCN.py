@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import RGCNConv, HeteroConv, Linear
+from torch_geometric.nn import GraphConv, HeteroConv, Linear
 from .GNN import GNN
 
 
@@ -17,7 +17,7 @@ class HeteroRGCN(GNN):
         for _ in range(n_layers):
             conv_dict = {}
             for edge_type in metadata[1]:
-                conv_dict[edge_type] = RGCNConv(hidden_dim, hidden_dim, num_relations=1)
+                conv_dict[edge_type] = GraphConv(hidden_dim, hidden_dim)
             self.convs.append(HeteroConv(conv_dict, aggr='sum'))
 
         if causal:
@@ -25,7 +25,7 @@ class HeteroRGCN(GNN):
             for _ in range(n_layers):
                 conv_dict = {}
                 for edge_type in metadata[1]:
-                    conv_dict[edge_type] = RGCNConv(hidden_dim, hidden_dim, num_relations=1)
+                    conv_dict[edge_type] = GraphConv(hidden_dim, hidden_dim)
                 self.rand_convs.append(HeteroConv(conv_dict, aggr='sum'))
 
     def forward(self, x_dict, edge_index_dict, out_key, task):
@@ -51,6 +51,10 @@ class HeteroRGCN(GNN):
 
         convs = self.convs if not causal else self.rand_convs
         for conv in convs:
-            x_dict = conv(x_dict, edge_index_dict)
+            # Use merging to preserve node features if they are not updated by conv
+            new_x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {k: new_x_dict[k] if k in new_x_dict else x_dict[k] for k in x_dict}
+            
+            x_dict = {k: self.activation(x) for k, x in x_dict.items()}
         return x_dict
 

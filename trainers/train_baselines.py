@@ -93,6 +93,7 @@ class BaselinesTrainer(MyTrainer):
     def train(self):
         self.load_checkpoint()
         
+        task = self.config_train["task"]
         for epoch in range(self.start_epoch, self.n_epoch):
             print(f"Epoch {epoch+1}/{self.n_epoch}")
             self.trainer.train(
@@ -102,11 +103,15 @@ class BaselinesTrainer(MyTrainer):
                 monitor=self.monitor,
             )
             
+            # Evaluate to get metrics for the summary
+            eval_metrics = self.trainer.evaluate(self.val_loader)
+            
             if self.should_save(epoch):
                 epoch_stats = {"Epoch": epoch + 1}
-                # Add some metrics if available from trainer
-                # PyHealth trainer doesn't easily expose last epoch metrics in a dict
-                # but we can at least save the model
+                # Prefix metrics with task name to match report generator expectations
+                for k, v in eval_metrics.items():
+                    epoch_stats[f"{task}_{k}"] = v
+
                 checkpoint = {
                     "model_state_dict": self.trainer.model.state_dict(),
                     "optimizer_state_dict": self.trainer.optimizer.state_dict() if hasattr(self.trainer, "optimizer") else None,

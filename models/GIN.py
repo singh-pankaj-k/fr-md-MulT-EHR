@@ -105,6 +105,10 @@ class GIN(GNN):
         for i, conv in enumerate(convs):
             if i != 0:
                 x_dict = {k: self.dropout(x) for k, x in x_dict.items()}
-            x_dict = conv(x_dict, edge_index_dict)
+            
+            # Use merging to preserve node features if they are not updated by conv
+            new_x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {k: new_x_dict[k] if k in new_x_dict else x_dict[k] for k in x_dict}
+            
             x_dict = {k: self.activation(x) for k, x in x_dict.items()}
         return x_dict

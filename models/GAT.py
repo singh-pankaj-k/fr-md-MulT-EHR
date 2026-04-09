@@ -32,8 +32,10 @@ class GAT(GNN):
             self.lin_dict[node_type] = Linear(in_dim, hidden_dim)
 
         self.convs = nn.ModuleList()
+        self.skip_lins = nn.ModuleList()
         for l in range(n_layers):
             conv_dict = {}
+            skip_lin_dict = nn.ModuleDict()
             for edge_type in metadata[1]:
                 # In PyG GATConv, if it's the first layer, in_channels = hidden_dim
                 # due to the linear projection we do in get_logit
@@ -44,12 +46,21 @@ class GAT(GNN):
                                                negative_slope=negative_slope, 
                                                concat=True,
                                                add_self_loops=add_self_loops)
+            
+            for node_type in metadata[0]:
+                in_ch = hidden_dim if l == 0 else hidden_dim * heads[l-1]
+                out_ch = hidden_dim * heads[l]
+                skip_lin_dict[node_type] = nn.Linear(in_ch, out_ch)
+                
             self.convs.append(HeteroConv(conv_dict, aggr='sum'))
+            self.skip_lins.append(skip_lin_dict)
 
         if causal:
             self.rand_convs = nn.ModuleList()
+            self.skip_rand_lins = nn.ModuleList()
             for l in range(n_layers):
                 conv_dict = {}
+                skip_lin_dict = nn.ModuleDict()
                 for edge_type in metadata[1]:
                     in_ch = hidden_dim if l == 0 else hidden_dim * heads[l-1]
                     add_self_loops = edge_type[0] == edge_type[2]
@@ -58,7 +69,14 @@ class GAT(GNN):
                                                    negative_slope=negative_slope, 
                                                    concat=True,
                                                    add_self_loops=add_self_loops)
+                
+                for node_type in metadata[0]:
+                    in_ch = hidden_dim if l == 0 else hidden_dim * heads[l-1]
+                    out_ch = hidden_dim * heads[l]
+                    skip_lin_dict[node_type] = nn.Linear(in_ch, out_ch)
+                    
                 self.rand_convs.append(HeteroConv(conv_dict, aggr='sum'))
+                self.skip_rand_lins.append(skip_lin_dict)
 
     def forward(self, x_dict, edge_index_dict, out_key, task):
         logits_dict = self.get_logit(x_dict, edge_index_dict)
@@ -84,11 +102,15 @@ class GAT(GNN):
         }
 
         convs = self.convs if not causal else self.rand_convs
+        skip_lins = self.skip_lins if not causal else self.skip_rand_lins
         
         for i, conv in enumerate(convs):
             if i != 0:
                 x_dict = {k: self.dropout(x) for k, x in x_dict.items()}
-            x_dict = conv(x_dict, edge_index_dict)
+            
+            # Use merging to preserve node features if they are not updated by conv
+            new_x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {k: new_x_dict[k] if k in new_x_dict else skip_lins[i][k](x_dict[k]) for k in x_dict}
             
             # GATConv output is (N, heads * hidden_dim) if concat=True
             # Original logic used flatten(1) which is consistent with concat=True
