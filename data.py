@@ -47,17 +47,45 @@ def load_graph(graph_path, labels_path, feat_dim=128, pretrained=None):
     # Arrange masks by tasks
     train_masks = {}
     test_masks = {}
+    
+    # Set seed for reproducible split
+    np.random.seed(42)
+    
     for k, lb in labels.items():
         if k == "all_drugs":
             train_masks.update({k: lb})
             test_masks.update({k: lb})
             continue
-        indices = np.random.permutation(len(lb))
-        split = int(0.9 * len(lb))
-
-        all_visits = np.array([k for k in lb.keys()])
-        train_visits = all_visits[indices[:split]]
-        test_visits = all_visits[indices[split:]]
+            
+        all_visits = np.array(list(lb.keys()))
+        if k == "drug_rec":
+            # For multi-label, just do random split but with fixed seed
+            indices = np.random.permutation(len(lb))
+            split = int(0.9 * len(lb))
+            train_visits = all_visits[indices[:split]]
+            test_visits = all_visits[indices[split:]]
+        else:
+            # Stratified split for binary/multiclass tasks
+            all_labels = np.array([lb[v] for v in all_visits])
+            unique_labels = np.unique(all_labels)
+            train_visits_list = []
+            test_visits_list = []
+            
+            for label in unique_labels:
+                label_indices = np.where(all_labels == label)[0]
+                np.random.shuffle(label_indices)
+                # Use 90/10 split
+                split_idx = int(0.9 * len(label_indices))
+                
+                # Ensure at least one sample in test if possible for better metrics
+                if split_idx == len(label_indices) and len(label_indices) >= 2:
+                    split_idx = len(label_indices) - 1
+                
+                train_visits_list.extend(all_visits[label_indices[:split_idx]])
+                test_visits_list.extend(all_visits[label_indices[split_idx:]])
+            
+            train_visits = np.array(train_visits_list)
+            test_visits = np.array(test_visits_list)
 
         train_masks.update({k: train_visits})
         test_masks.update({k: test_visits})

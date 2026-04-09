@@ -68,3 +68,4 @@ var/
 /benchmark/aggregated_results.csv
 /benchmark/summary_report.md
 /.venv_narval/
+/benchmark/plots/dropout_ablation_auc.png

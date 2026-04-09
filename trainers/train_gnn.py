@@ -51,6 +51,51 @@ class GNNTrainer(Trainer):
 
         self.gnn = parse_gnn_model(self.config_gnn, self.graph, self.tasks).to(self.device)
         self.optimizer = parse_optimizer(self.config_optim, self.gnn)
+        
+        self.n_samples = self.config_train.get("n_samples", 2000)
+
+    def down_sample(self, indices, labels):
+        """
+        Down sample labels to ensure data balance
+        """
+        neg_indices = indices[labels.detach().cpu() == 0]
+        pos_indices = indices[labels.detach().cpu() == 1]
+        
+        if len(pos_indices) == 0 or len(neg_indices) == 0:
+            return indices
+            
+        indices_balanced = np.random.choice(len(neg_indices), size=len(pos_indices), replace=True)
+        neg_indices = neg_indices[indices_balanced]
+
+        return np.concatenate(
+            [pos_indices, neg_indices]
+        )
+
+    def get_indices_labels(self, t, train=True):
+        indices = self.train_mask[t] if train else self.test_mask[t]
+        if train:
+            # Subsample to n_samples
+            indices = indices[torch.randperm(len(indices))[:self.n_samples]]
+
+        if t == "drug_rec":
+            all_drugs = self.labels["all_drugs"]
+            drug_to_idx = {d: i for i, d in enumerate(all_drugs)}
+            labels_list = []
+            for i in indices:
+                multi_hot = torch.zeros(len(all_drugs))
+                for drug in self.labels[t][i]:
+                    if drug in drug_to_idx:
+                        multi_hot[drug_to_idx[drug]] = 1
+                labels_list.append(multi_hot)
+            labels = torch.stack(labels_list).to(self.device)
+        else:
+            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+
+        if t == "mort_pred" and train:
+            indices = self.down_sample(indices, labels)
+            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+
+        return indices, labels
 
     def train(self) -> None:
         print(f"Start training GNN")
@@ -70,24 +115,13 @@ class GNNTrainer(Trainer):
             total_loss = 0
             all_train_metrics = {}
             for t in self.tasks:
-                indices = self.train_mask[t]
+                indices, labels = self.get_indices_labels(t, train=True)
+                
+                if len(indices) == 0:
+                    continue
+                    
                 preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
                 preds = preds_dict[indices]
-                
-                if t == "drug_rec":
-                    # Convert list of drug codes to multi-hot encoding
-                    all_drugs = self.labels["all_drugs"]
-                    drug_to_idx = {d: i for i, d in enumerate(all_drugs)}
-                    labels_list = []
-                    for i in indices:
-                        multi_hot = torch.zeros(len(all_drugs))
-                        for drug in self.labels[t][i]:
-                            if drug in drug_to_idx:
-                                multi_hot[drug_to_idx[drug]] = 1
-                        labels_list.append(multi_hot)
-                    labels = torch.stack(labels_list).to(self.device)
-                else:
-                    labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
                 
                 if t == "drug_rec":
                     task_loss = F.binary_cross_entropy_with_logits(preds, labels)
@@ -131,22 +165,10 @@ class GNNTrainer(Trainer):
         self.gnn.eval()
         test_metrics = {}
         for t in self.tasks:
-            indices = self.test_mask[t]
+            indices, labels = self.get_indices_labels(t, train=False)
             
-            if t == "drug_rec":
-                # Convert list of drug codes to multi-hot encoding
-                all_drugs = self.labels["all_drugs"]
-                drug_to_idx = {d: i for i, d in enumerate(all_drugs)}
-                labels_list = []
-                for i in indices:
-                    multi_hot = torch.zeros(len(all_drugs))
-                    for drug in self.labels[t][i]:
-                        if drug in drug_to_idx:
-                            multi_hot[drug_to_idx[drug]] = 1
-                    labels_list.append(multi_hot)
-                labels = torch.stack(labels_list).to(self.device)
-            else:
-                labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            if len(indices) == 0:
+                continue
 
             with torch.no_grad():
                 preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)

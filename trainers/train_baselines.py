@@ -38,7 +38,41 @@ class BaselinesTrainer(MyTrainer):
         metrics = self.set_mode_metrics(task)
 
         mimic3sample = self.set_task(task, mimic3base)  # use default task
-        train_ds, val_ds, test_ds = split_by_visit(mimic3sample, [0.9, 0.1, 0])
+        
+        # Stratified split to ensure non-zero metrics without using mock labels (shortcuts)
+        import random
+        import os
+        from collections import defaultdict
+        
+        random.seed(42)
+        if task == "drug_rec":
+            train_ds, val_ds, test_ds = split_by_visit(mimic3sample, [0.9, 0.1, 0])
+        else:
+            # Manual stratified split
+            label_to_indices = defaultdict(list)
+            for i, sample in enumerate(mimic3sample.samples):
+                label_to_indices[sample["label"]].append(i)
+            
+            train_indices = []
+            val_indices = []
+            for label, indices in label_to_indices.items():
+                random.shuffle(indices)
+                n_train = int(0.9 * len(indices))
+                if n_train == len(indices) and len(indices) >= 2:
+                    n_train = len(indices) - 1
+                train_indices.extend(indices[:n_train])
+                val_indices.extend(indices[n_train:])
+            
+            # Subsample if needed to keep it fast in dev mode
+            if os.environ.get("MODE") == "dev":
+                n_samples = int(os.environ.get("DEV_SAMPLES", 100))
+                train_indices = train_indices[:n_samples]
+                val_indices = val_indices[:n_samples // 2]
+            
+            from torch.utils.data import Subset
+            train_ds = Subset(mimic3sample, train_indices)
+            val_ds = Subset(mimic3sample, val_indices)
+            test_ds = Subset(mimic3sample, []) # We evaluate on val set for benchmarks usually
 
         # create dataloaders (torch.data.DataLoader)
         self.train_loader = get_dataloader(train_ds, batch_size=32, shuffle=True)
@@ -163,18 +197,6 @@ class BaselinesTrainer(MyTrainer):
             sample_dataset = base_dataset.set_task(task_fn=globals()[f"drug_recommendation_{name}_fn"])
         else:
             raise NotImplementedError
-
-        # Ensure balanced labels for dev mode to avoid NaN metrics
-        if os.environ.get("MODE") == "dev":
-            print(f"Dev mode: Ensuring balanced labels for task {task} in baseline samples.")
-            for i, sample in enumerate(sample_dataset.samples):
-                if task in ["readm", "mort_pred"]:
-                    sample["label"] = i % 2
-                elif task == "los":
-                    sample["label"] = i % 10
-                elif task == "drug_rec":
-                    if not sample.get("drugs"):
-                        sample["drugs"] = [0] # index of first drug
 
         return sample_dataset
 
