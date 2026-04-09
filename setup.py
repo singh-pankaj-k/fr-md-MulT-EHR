@@ -24,5 +24,6 @@ setup(
         "pandarallel>=1.5.3",
         "mne>=1.0.3",
         "rdkit>=2022.03.4",
+        "pyhealth",
     ],
 )

@@ -59,12 +59,21 @@ class GraphConstructor:
                 refresh_cache=True,
             )
         elif "mimiciv" in raw_path:
-            self.dataset = MIMIC4Dataset(
-                root=raw_path,
-                tables=["diagnoses_icd", "procedures_icd", "prescriptions", "labevents"],
-                dev=self.dev,
-                refresh_cache=True,
-            )
+            # Handle both PyHealth 1.x and 2.x constructor arguments
+            try:
+                self.dataset = MIMIC4Dataset(
+                    ehr_root=raw_path,
+                    ehr_tables=["diagnoses_icd", "procedures_icd", "prescriptions", "labevents"],
+                    dev=self.dev,
+                    refresh_cache=True,
+                )
+            except TypeError:
+                self.dataset = MIMIC4Dataset(
+                    root=raw_path,
+                    tables=["diagnoses_icd", "procedures_icd", "prescriptions", "labevents"],
+                    dev=self.dev,
+                    refresh_cache=True,
+                )
         else:
             raise NotImplementedError
 
@@ -122,8 +131,15 @@ class GraphConstructor:
         visit_prescription_edges = []
         visit_labevent_edges = []
 
-        # In pyhealth 1.1.6, we use self.dataset.patients.values()
-        for patient in tqdm(self.dataset.patients.values()):
+        # Handle both PyHealth 1.x (patients dict) and 2.x (iter_patients)
+        if hasattr(self.dataset, "patients") and isinstance(self.dataset.patients, dict):
+            patients_iter = self.dataset.patients.values()
+        elif hasattr(self.dataset, "iter_patients"):
+            patients_iter = self.dataset.iter_patients()
+        else:
+            patients_iter = getattr(self.dataset, "patients", [])
+
+        for patient in tqdm(patients_iter):
             patient_id = patient.patient_id
             if patient_id not in patients_dict:
                 patients_dict[patient_id] = len(patients_dict)
