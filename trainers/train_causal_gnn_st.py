@@ -35,12 +35,12 @@ class CausalSTGNNTrainer(Trainer):
         self.config_gnn = config["GNN"]
 
         # Initialize GNN model and optimizer
-        self.tasks = [
+        self.tasks = self.config_train.get("tasks", [
             "mort_pred",
             "los",
             "drug_rec",
             "readm",
-        ]
+        ])
 
         # Load graph, labels and splits
         graph_path = self.config_data["graph_path"]
@@ -110,7 +110,7 @@ class CausalSTGNNTrainer(Trainer):
         return 0
 
     def train(self) -> None:
-        print(f"Start training GNN")
+        print(f"Start training Causal-ST-GNN")
 
         self.load_checkpoint()
 
@@ -119,12 +119,17 @@ class CausalSTGNNTrainer(Trainer):
         for epoch in training_range:
             self.set_mode("train")
             epoch_stats = {"Epoch": epoch + 1}
-            preds, labels = None, None
+            all_train_metrics = {}
+            total_loss = 0
 
             # Perform aggregation on visits
             for t in self.tasks:
+                if t not in self.optimizers: continue
                 self.optimizers[t].zero_grad()
                 indices, labels = self.get_indices_labels(t)
+                
+                if len(indices) == 0:
+                    continue
 
                 x_dict, edge_index_dict = self.get_subgraphs(indices, "visit")
 
@@ -138,27 +143,32 @@ class CausalSTGNNTrainer(Trainer):
                     loss = F.binary_cross_entropy(preds, labels) + unif_loss * 0.001
                 else:
                     loss = F.cross_entropy(preds, labels) + unif_loss * 0.001
+                
                 loss.backward()
                 self.optimizers[t].step()
+                total_loss += loss.item()
+                all_train_metrics.update(metrics(preds, labels, t, prefix=f"tr_{t}"))
 
-            train_metrics = metrics(preds, labels, "readm")
             # Perform validation and testing
             test_metrics = self.evaluate()
 
+            prog_task = self.tasks[0]
+            auc_key = f"{prog_task}_roc_auc"
+            if prog_task == 'los': auc_key = "los_roc_auc_weighted_ovo"
+            if prog_task == 'drug_rec': auc_key = "drug_rec_roc_auc_samples"
+
             training_range.set_description_str(
-                "Epoch {} | loss: {:.4f}| Train AUC: {:.4f} | Test AUC: {:.4f} | Test ACC: {:.4f} ".format(
-                    epoch, loss.item(),
-                    train_metrics["tr_accuracy"],
-                    test_metrics["readm_roc_auc"],
-                    test_metrics["readm_accuracy"]
+                "Epoch {} | loss: {:.4f}| Test {} AUC: {:.4f} ".format(
+                    epoch, total_loss / len(self.tasks), prog_task,
+                    test_metrics.get(auc_key, 0.0)
                 )
             )
 
-            epoch_stats.update({"Train Loss: ": loss.item()})
-            epoch_stats.update(train_metrics)
+            epoch_stats.update({"Train Loss": total_loss / len(self.tasks)})
+            epoch_stats.update(all_train_metrics)
             epoch_stats.update(test_metrics)
             self.visualize_embeddings()
-            self.logging(loss, train_metrics, test_metrics)
+            self.logging(total_loss / len(self.tasks), all_train_metrics, test_metrics)
 
             if self.should_save(epoch):
                 checkpoint = {
@@ -178,7 +188,7 @@ class CausalSTGNNTrainer(Trainer):
     def evaluate(self):
         self.set_mode("eval")
         test_metrics = {}
-        for t in ["readm", "mort_pred", "los", "drug_rec"]:
+        for t in self.tasks:
             indices, labels = self.get_indices_labels(t, False, -1)
 
             sg = self.get_subgraphs(indices, "visit")
@@ -200,7 +210,7 @@ class CausalSTGNNTrainer(Trainer):
         loss = loss_fcn(feat, unif_feat) + loss_fcn(unif_feat, feat)
         return loss
 
-    def get_masks(self, g: dgl.DGLGraph, train: bool, task: str):
+    def get_masks(self, g, train: bool, task: str):
         if train:
             masks = self.train_mask[task]
             labels = [self.labels[task][v] for v in masks]
@@ -239,7 +249,7 @@ class CausalSTGNNTrainer(Trainer):
             indices = indices[torch.randperm(len(indices))[:cap]]
 
         if t == "drug_rec":
-            all_drugs = self.train_mask["all_drugs"]
+            all_drugs = self.labels["all_drugs"]
             labels = []
             for i in indices:
                 drugs = self.labels[t][i]
@@ -249,7 +259,7 @@ class CausalSTGNNTrainer(Trainer):
         else:
             labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
 
-        if t == "mort" and train:
+        if t == "mort_pred" and train:
             indices = self.down_sample(indices, labels)
             labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
 
@@ -258,16 +268,17 @@ class CausalSTGNNTrainer(Trainer):
     def down_sample(self, indices, labels):
         """
         Down sample labels to ensure data balance
-        :param scores:
-        :param label:
-        :return:
         """
-        n = len(labels[labels == 1])
-        neg_indices = indices[labels == 0]
-        pos_indices = indices[labels == 1]
-        neg_indices = neg_indices[torch.randperm(len(neg_indices))[:n]]
+        neg_indices = indices[labels.detach().cpu() == 0]
+        pos_indices = indices[labels.detach().cpu() == 1]
+        
+        if len(pos_indices) == 0 or len(neg_indices) == 0:
+            return indices
+            
+        n = len(pos_indices)
+        neg_indices_balanced = neg_indices[torch.randperm(len(neg_indices))[:n]]
 
-        return torch.cat(pos_indices, neg_indices)
+        return torch.cat([pos_indices, neg_indices_balanced])
 
     def logging(self, loss, train_metrics, test_metrics):
         wandb.log({"loss": loss})

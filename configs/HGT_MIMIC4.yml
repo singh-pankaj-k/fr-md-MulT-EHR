@@ -39,5 +39,11 @@ GNN:
 
 #### training settings: learning rate scheme, loss, optimizer
 train:
+  tasks: [
+    "mort_pred",
+    "los",
+    "drug_rec",
+    "readm"
+  ]
   num_epochs: 200
   batch_size: 4096

@@ -33,7 +33,7 @@ class CausalGNNTrainer(Trainer):
         self.config_gnn = config["GNN"]
 
         # Initialize GNN model and optimizer
-        self.tasks = self.config_train["tasks"]
+        self.tasks = self.config_train.get("tasks", ["readm"])
 
         # Load graph, labels and splits
         graph_path = self.config_data["graph_path"]
@@ -102,6 +102,7 @@ class CausalGNNTrainer(Trainer):
             # Perform aggregation on visits
             self.optimizer.zero_grad()
             # random.shuffle(self.tasks)
+            all_train_metrics = {}
             for t in self.tasks:
                 indices, labels = self.get_indices_labels(t)
                 
@@ -124,14 +125,15 @@ class CausalGNNTrainer(Trainer):
                     preds = preds / self.temperature * 10  # Temperature scaling
                     loss = F.binary_cross_entropy_with_logits(preds, labels) + \
                            unif_loss * self.reg_coeff
-                    # F.binary_cross_entropy_with_logits(preds_interv, labels) + \
                 else:
                     preds /= self.temperature
                     loss = F.cross_entropy(preds, labels) + \
                            unif_loss * self.reg_coeff
-                    # F.cross_entropy(preds_interv, labels) + \
 
                 losses.append(loss.view(-1))
+                
+                # Collect train metrics for this task
+                all_train_metrics.update(metrics(preds, labels, t, prefix=f"tr_{t}"))
 
             if not losses:
                 print("Warning: No losses computed for this epoch (all tasks skipped).")
@@ -140,28 +142,29 @@ class CausalGNNTrainer(Trainer):
             loss = mean + torch.nan_to_num(var, 0).item()
             loss.backward()
 
-            # self.graph.ndata['feat'] = {k: v.detach().cpu() for k, v in self.gnn.feat.items()}
-
             self.optimizer.step()
 
-            train_metrics = metrics(preds, labels, "readm")
             # Perform validation and testing
             test_metrics = self.evaluate()
 
+            # Use a more representative task for the progress bar (e.g., first available task)
+            prog_task = self.tasks[0]
+            auc_key = f"{prog_task}_roc_auc"
+            if prog_task == 'los': auc_key = "los_roc_auc_weighted_ovo"
+            if prog_task == 'drug_rec': auc_key = "drug_rec_roc_auc_samples"
+
             training_range.set_description_str(
-                "Epoch {} | loss: {:.4f}| Train AUC: {:.4f} | Test AUC: {:.4f} | Test ACC: {:.4f} ".format(
-                    epoch, loss.item(),
-                    train_metrics["tr_accuracy"],
-                    test_metrics["readm_roc_auc"],
-                    test_metrics["readm_accuracy"]
+                "Epoch {} | loss: {:.4f}| Test {} AUC: {:.4f} ".format(
+                    epoch, loss.item(), prog_task,
+                    test_metrics.get(auc_key, 0.0)
                 )
             )
 
             epoch_stats.update({"Train Loss: ": loss.item()})
-            epoch_stats.update(train_metrics)
+            epoch_stats.update(all_train_metrics)
             epoch_stats.update(test_metrics)
             # self.interpret()
-            self.logging(loss, train_metrics, test_metrics)
+            self.logging(loss, all_train_metrics, test_metrics)
             self.visualize_embeddings()
 
             if self.should_save(epoch):
@@ -251,7 +254,7 @@ class CausalGNNTrainer(Trainer):
         loss = (loss_fcn(feat, unif_feat) + loss_fcn(unif_feat, feat)) / 2
         return loss
 
-    def get_masks(self, g: dgl.DGLGraph, train: bool, task: str):
+    def get_masks(self, g, train: bool, task: str):
         if train:
             masks = self.train_mask[task]
             labels = [self.labels[task][v] for v in masks]
@@ -313,15 +316,15 @@ class CausalGNNTrainer(Trainer):
     def down_sample(self, indices, labels):
         """
         Down sample labels to ensure data balance
-        :param scores:
-        :param label:
-        :return:
         """
-        n = len(labels[labels == 0])
         neg_indices = indices[labels.detach().cpu() == 0]
         pos_indices = indices[labels.detach().cpu() == 1]
-        indices = np.random.choice(len(neg_indices), size=len(pos_indices), replace=True)
-        neg_indices = neg_indices[indices]
+        
+        if len(pos_indices) == 0 or len(neg_indices) == 0:
+            return indices
+            
+        indices_balanced = np.random.choice(len(neg_indices), size=len(pos_indices), replace=True)
+        neg_indices = neg_indices[indices_balanced]
 
         return np.concatenate(
             [pos_indices, neg_indices]

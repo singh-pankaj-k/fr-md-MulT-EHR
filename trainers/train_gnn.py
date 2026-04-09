@@ -26,7 +26,7 @@ class GNNTrainer(Trainer):
         self.config_gnn = config["GNN"]
 
         # Initialize GNN model and optimizer
-        self.tasks = ["readm"]
+        self.tasks = self.config_train.get("tasks", ["readm"])
 
         # Load graph, labels and splits
         graph_path = self.config_data["graph_path"]
@@ -67,38 +67,48 @@ class GNNTrainer(Trainer):
             # Perform aggregation on visits
             self.optimizer.zero_grad()
             
-            # Simple subgraphing for PyG (full graph training for now as in original)
-            # In original code, it creates a subgraph for each task's training indices
+            total_loss = 0
+            all_train_metrics = {}
             for t in self.tasks:
                 indices = self.train_mask[t]
-                # To simulate subgraphing on 'visit' nodes in PyG:
-                # We can either pass a mask or truly subgraph
-                # Here we pass the full x_dict/edge_index_dict and then slice the output
                 preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
-                preds = preds_dict # The HGT model I wrote returns the output for the specified task and key already
+                preds = preds_dict[indices]
                 
-                labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
-                # Slice preds to only include the training indices for 'visit' nodes
-                # Note: This assumes the model output corresponds to all 'visit' nodes
-                # The way I wrote HGT.forward, it returns self.out[task](logits[out_key])
-                # where logits[out_key] is for all nodes of that type.
+                if t == "drug_rec":
+                    # Convert list of drug codes to multi-hot encoding
+                    all_drugs = self.labels["all_drugs"]
+                    drug_to_idx = {d: i for i, d in enumerate(all_drugs)}
+                    labels_list = []
+                    for i in indices:
+                        multi_hot = torch.zeros(len(all_drugs))
+                        for drug in self.labels[t][i]:
+                            if drug in drug_to_idx:
+                                multi_hot[drug_to_idx[drug]] = 1
+                        labels_list.append(multi_hot)
+                    labels = torch.stack(labels_list).to(self.device)
+                else:
+                    labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
                 
-                preds = preds[indices]
-                loss = F.cross_entropy(preds, labels)
+                if t == "drug_rec":
+                    task_loss = F.binary_cross_entropy_with_logits(preds, labels)
+                else:
+                    task_loss = F.cross_entropy(preds, labels)
+                
+                total_loss += task_loss
+                all_train_metrics.update(metrics(preds, labels, t, prefix=f"tr_{t}"))
 
-            loss.backward()
+            total_loss.backward()
             self.optimizer.step()
-
-            train_metrics = metrics(preds, labels, "readm", prefix="train")
 
             # Perform validation and testing
             test_metrics = self.evaluate()
 
-            training_range.set_description_str("Epoch {} | loss: {:.4f}| Train AUC: {:.4f} | Test AUC: {:.4f} | Test ACC: {:.4f} ".format(
-                epoch, loss.item(), train_metrics["train_roc_auc"], test_metrics["test_roc_auc"], test_metrics["test_accuracy"]))
+            prog_task = self.tasks[0]
+            training_range.set_description_str("Epoch {} | loss: {:.4f}| Test {} AUC: {:.4f} ".format(
+                epoch, total_loss.item(), prog_task, test_metrics.get(f"{prog_task}_roc_auc", 0.0)))
 
-            epoch_stats.update({"Train Loss: ": loss.item()})
-            epoch_stats.update(train_metrics)
+            epoch_stats.update({"Train Loss": total_loss.item()})
+            epoch_stats.update(all_train_metrics)
             epoch_stats.update(test_metrics)
 
             if self.should_save(epoch):
@@ -119,15 +129,29 @@ class GNNTrainer(Trainer):
 
     def evaluate(self):
         self.gnn.eval()
+        test_metrics = {}
         for t in self.tasks:
             indices = self.test_mask[t]
-            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            
+            if t == "drug_rec":
+                # Convert list of drug codes to multi-hot encoding
+                all_drugs = self.labels["all_drugs"]
+                drug_to_idx = {d: i for i, d in enumerate(all_drugs)}
+                labels_list = []
+                for i in indices:
+                    multi_hot = torch.zeros(len(all_drugs))
+                    for drug in self.labels[t][i]:
+                        if drug in drug_to_idx:
+                            multi_hot[drug_to_idx[drug]] = 1
+                    labels_list.append(multi_hot)
+                labels = torch.stack(labels_list).to(self.device)
+            else:
+                labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
 
             with torch.no_grad():
                 preds_dict = self.gnn(self.x_dict, self.edge_index_dict, "visit", t)
                 preds = preds_dict[indices]
-
-        test_metrics = metrics(preds, labels, "readm", prefix="test")
+                test_metrics.update(metrics(preds, labels, t, prefix=f"{t}"))
 
         return test_metrics
 

@@ -309,9 +309,9 @@ class GraphConstructor:
         los = self._extract_task_labels(los_samples, vm, los_label)
         readm = self._extract_task_labels(readm_samples, vm, readm_label)
 
-        # If no labels found, generate mock labels for dev mode to test training
-        if not mort_pred:
-            print("Warning: No mortality labels found. Generating mock labels.")
+        # If no labels found or all labels are the same, generate mock labels for dev mode
+        if not mort_pred or len(set(mort_pred.values())) < 2:
+            print(f"Warning: Insufficient mortality labels (found {len(set(mort_pred.values())) if mort_pred else 0} classes). Generating mock labels.")
             for i, (vid, idx) in enumerate(vm.items()):
                 mort_pred[idx] = i % 2
         if not drug_rec:
