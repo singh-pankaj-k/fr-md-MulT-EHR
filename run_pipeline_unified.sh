@@ -28,7 +28,11 @@ fi
 
 # Determine python command
 PYTHON_CMD=${PYTHON_CMD:-python3}
-if ! command -v $PYTHON_CMD &> /dev/null; then
+if [ -f "/usr/bin/python3" ] && ! $PYTHON_CMD -c "import pyhealth" &> /dev/null; then
+    if /usr/bin/python3 -c "import pyhealth" &> /dev/null; then
+        PYTHON_CMD="/usr/bin/python3"
+    fi
+elif ! command -v $PYTHON_CMD &> /dev/null; then
     PYTHON_CMD="python"
 fi
 

@@ -39,6 +39,7 @@ if [ ! -d "$VENV_DIR" ]; then
     fi
     
     echo "Installing project requirements using wheelhouse and offline bundle..."
+    pip install
     pip install --no-index --find-links=offline_bundle -r requirements.txt
     
     # Verification step: Ensure CUDA and torch_geometric are working
