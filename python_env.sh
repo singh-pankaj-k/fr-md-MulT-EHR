@@ -35,7 +35,7 @@ if [ ! -d "$VENV_DIR" ]; then
     # 2.1 Setup offline bundle for pyhealth (as it is not available in standard wheelhouse)
     if [ ! -d "offline_bundle" ]; then
         echo "Downloading pyhealth offline bundle (requires internet access, best done on login node)..."
-        pip download -d offline_bundle pyhealth
+        pip download -d offline_bundle pyhealth==2.0
     fi
     
     echo "Installing project requirements using wheelhouse and offline bundle..."
