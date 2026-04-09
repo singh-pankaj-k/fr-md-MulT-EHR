@@ -27,9 +27,9 @@ if [ "$CLEAN" == "true" ]; then
 fi
 
 # Determine python command
-PYTHON_CMD="python"
+PYTHON_CMD=${PYTHON_CMD:-python3}
 if ! command -v $PYTHON_CMD &> /dev/null; then
-    PYTHON_CMD="python3"
+    PYTHON_CMD="python"
 fi
 
 # Enable MPS fallback for better compatibility on macOS

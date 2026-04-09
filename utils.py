@@ -58,11 +58,19 @@ def load_config(name, config_dir="./configs/"):
 def metrics(outputs, targets, t, prefix="tr"):
 
     if t in ["mort_pred", "readm"]:
-        met = binary_metrics_fn(
-            targets.detach().cpu().numpy(),
-            outputs.softmax(1)[:, 1].detach().cpu().numpy(),
-            metrics=["accuracy", "roc_auc", "f1", "pr_auc"]
-        )
+        try:
+            met = binary_metrics_fn(
+                targets.detach().cpu().numpy(),
+                outputs.softmax(1)[:, 1].detach().cpu().numpy(),
+                metrics=["accuracy", "roc_auc", "f1", "pr_auc"]
+            )
+        except ValueError:
+            # Fallback for dev mode where not all classes might be present in labels
+            print(f"Warning: Binary metrics failed for {t} (likely missing classes in dev set). Using accuracy only.")
+            from sklearn.metrics import accuracy_score
+            y_true = targets.detach().cpu().numpy()
+            y_pred = (outputs.softmax(1)[:, 1] > 0.5).detach().cpu().numpy()
+            met = {"accuracy": accuracy_score(y_true, y_pred), "roc_auc": 0.0, "f1": 0.0, "pr_auc": 0.0}
     elif t == "los":
         try:
             met = multiclass_metrics_fn(

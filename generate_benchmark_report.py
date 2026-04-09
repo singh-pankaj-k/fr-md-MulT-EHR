@@ -32,7 +32,14 @@ def aggregate_results(checkpoints_dir='checkpoints'):
         try:
             with open(stats_file, 'r') as f:
                 lines = f.readlines()
-                epochs_stats = [json.loads(line) for line in lines if line.strip()]
+                # Clean up lines to handle potential NaN or other non-standard JSON
+                cleaned_lines = []
+                for line in lines:
+                    if line.strip():
+                        # Replace NaN with null for valid JSON parsing
+                        cleaned_line = line.replace(': NaN', ': null').replace(': nan', ': null')
+                        cleaned_lines.append(cleaned_line)
+                epochs_stats = [json.loads(line) for line in cleaned_lines]
         except Exception as e:
             print(f"Error reading {stats_file}: {e}")
             continue
@@ -58,11 +65,13 @@ def aggregate_results(checkpoints_dir='checkpoints'):
             acc_key = f"{task}_accuracy"
             
             for epoch in epochs_stats:
-                auc = epoch.get(auc_key, 0)
-                if isinstance(auc, str): auc = 0 # Handle potential NaN or errors
+                auc = epoch.get(auc_key)
+                if auc is None or isinstance(auc, str): 
+                    auc = 0 # Handle null (from NaN) or potential errors
+                
                 if auc > best_auc:
                     best_auc = auc
-                    best_acc = epoch.get(acc_key, 0)
+                    best_acc = epoch.get(acc_key, 0) or 0
             
             summary[f"{task}_auc"] = best_auc
             summary[f"{task}_acc"] = best_acc
