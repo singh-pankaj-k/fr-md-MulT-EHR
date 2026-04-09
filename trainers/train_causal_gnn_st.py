@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import wandb
 import random
@@ -222,7 +223,10 @@ class CausalSTGNNTrainer(Trainer):
 
         for tp in g.ntypes:
             if tp == "visit":
-                m[tp] = torch.from_numpy(masks.astype("int32"))
+                if isinstance(masks, torch.Tensor):
+                    m[tp] = masks.int()
+                else:
+                    m[tp] = torch.from_numpy(masks.astype("int32"))
             else:
                 m[tp] = torch.zeros(0)
 
@@ -245,38 +249,67 @@ class CausalSTGNNTrainer(Trainer):
 
     def get_indices_labels(self, t, train=True, cap=3000):
         indices = self.train_mask[t] if train else self.test_mask[t]
-        if cap > 0:
-            indices = indices[torch.randperm(len(indices))[:cap]]
+        # Convert to tensor to keep everything on the same device
+        indices = torch.tensor(indices, device=self.device)
+
+        if train:
+            # Subsample randomly to cap
+            if cap > 0 and len(indices) > cap:
+                if t == "mort_pred" and os.environ.get("MODE") == "dev":
+                    # In dev mode, ensure we get some positives for mortality
+                    all_labels = torch.tensor([self.labels[t][i.item()] for i in indices], device=self.device)
+                    pos_mask = (all_labels == 1)
+                    neg_mask = (all_labels == 0)
+                    
+                    pos_idx = indices[pos_mask]
+                    neg_idx = indices[neg_mask]
+                    
+                    n_pos = min(len(pos_idx), cap // 2)
+                    n_neg = cap - n_pos
+                    
+                    selected_pos = pos_idx[torch.randperm(len(pos_idx))[:n_pos]]
+                    selected_neg = neg_idx[torch.randperm(len(neg_idx))[:n_neg]]
+                    indices = torch.cat([selected_pos, selected_neg])
+                else:
+                    indices = indices[torch.randperm(len(indices))[:cap]]
 
         if t == "drug_rec":
             all_drugs = self.labels["all_drugs"]
-            labels = []
+            labels_list = []
             for i in indices:
-                drugs = self.labels[t][i]
-                labels.append([1 if d in drugs else 0 for d in all_drugs])
-            labels = torch.FloatTensor(labels).to(self.device)
+                drugs = self.labels[t][i.item()]
+                labels_list.append([1 if d in drugs else 0 for d in all_drugs])
+            labels = torch.FloatTensor(labels_list).to(self.device)
 
         else:
-            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            labels = torch.LongTensor([self.labels[t][i.item()] for i in indices]).to(self.device)
 
         if t == "mort_pred" and train:
             indices = self.down_sample(indices, labels)
-            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            labels = torch.LongTensor([self.labels[t][i.item()] for i in indices]).to(self.device)
 
         return indices, labels
 
     def down_sample(self, indices, labels):
         """
-        Down sample labels to ensure data balance
+        Down sample labels to ensure data balance (stays on GPU/device)
         """
-        neg_indices = indices[labels.detach().cpu() == 0]
-        pos_indices = indices[labels.detach().cpu() == 1]
+        if not isinstance(indices, torch.Tensor):
+            indices = torch.tensor(indices, device=self.device)
+            
+        neg_mask = (labels == 0)
+        pos_mask = (labels == 1)
+        
+        neg_indices = indices[neg_mask]
+        pos_indices = indices[pos_mask]
         
         if len(pos_indices) == 0 or len(neg_indices) == 0:
             return indices
             
         n = len(pos_indices)
-        neg_indices_balanced = neg_indices[torch.randperm(len(neg_indices))[:n]]
+        # Use torch for random selection to stay on device
+        perm = torch.randperm(len(neg_indices), device=self.device)[:n]
+        neg_indices_balanced = neg_indices[perm]
 
         return torch.cat([pos_indices, neg_indices_balanced])
 

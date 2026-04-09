@@ -1,3 +1,4 @@
+import os
 import wandb
 import random
 from collections import OrderedDict
@@ -190,8 +191,8 @@ class CausalGNNTrainer(Trainer):
             indices, labels = self.get_indices_labels(t, False)
 
             all_preds = []
-            # indices is a numpy array from self.test_mask[t]
-            for chunk in torch.split(torch.from_numpy(indices), self.n_samples):
+            # indices is now a tensor
+            for chunk in torch.split(indices, self.n_samples):
 
                 # sg = self.get_subgraphs(chunk, "visit", False)
 
@@ -266,7 +267,10 @@ class CausalGNNTrainer(Trainer):
 
         for tp in g.ntypes:
             if tp == "visit":
-                m[tp] = torch.from_numpy(masks.astype("int32"))
+                if isinstance(masks, torch.Tensor):
+                    m[tp] = masks.int()
+                else:
+                    m[tp] = torch.from_numpy(masks.astype("int32"))
             else:
                 m[tp] = torch.zeros(0)
 
@@ -293,42 +297,68 @@ class CausalGNNTrainer(Trainer):
 
     def get_indices_labels(self, t, train=True):
         indices = self.train_mask[t] if train else self.test_mask[t]
+        # Convert to tensor to keep everything on the same device
+        indices = torch.tensor(indices, device=self.device)
+
         if train:  # set -1 tp use all indices
-            indices = indices[torch.randperm(len(indices))[:self.n_samples]]
+            if self.n_samples > 0 and len(indices) > self.n_samples:
+                if t == "mort_pred" and os.environ.get("MODE") == "dev":
+                    # In dev mode, ensure we get some positives for mortality
+                    all_labels = torch.tensor([self.labels[t][i.item()] for i in indices], device=self.device)
+                    pos_mask = (all_labels == 1)
+                    neg_mask = (all_labels == 0)
+                    
+                    pos_idx = indices[pos_mask]
+                    neg_idx = indices[neg_mask]
+                    
+                    n_pos = min(len(pos_idx), self.n_samples // 2)
+                    n_neg = self.n_samples - n_pos
+                    
+                    selected_pos = pos_idx[torch.randperm(len(pos_idx))[:n_pos]]
+                    selected_neg = neg_idx[torch.randperm(len(neg_idx))[:n_neg]]
+                    indices = torch.cat([selected_pos, selected_neg])
+                else:
+                    indices = indices[torch.randperm(len(indices))[:self.n_samples]]
 
         if t == "drug_rec":
             all_drugs = self.train_mask["all_drugs"]
-            labels = []
+            labels_list = []
             for i in indices:
-                drugs = self.labels[t][i]
-                labels.append([1 if d in drugs else 0 for d in all_drugs])
-            labels = torch.FloatTensor(labels).to(self.device)
+                drugs = self.labels[t][i.item()]
+                labels_list.append([1 if d in drugs else 0 for d in all_drugs])
+            labels = torch.FloatTensor(labels_list).to(self.device)
 
         else:
-            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            labels = torch.LongTensor([self.labels[t][i.item()] for i in indices]).to(self.device)
 
         if t == "mort_pred" and train:
             indices = self.down_sample(indices, labels)
-            labels = torch.LongTensor([self.labels[t][i] for i in indices]).to(self.device)
+            labels = torch.LongTensor([self.labels[t][i.item()] for i in indices]).to(self.device)
 
         return indices, labels
 
     def down_sample(self, indices, labels):
         """
-        Down sample labels to ensure data balance
+        Down sample labels to ensure data balance (stays on GPU/device)
         """
-        neg_indices = indices[labels.detach().cpu() == 0]
-        pos_indices = indices[labels.detach().cpu() == 1]
+        if not isinstance(indices, torch.Tensor):
+            indices = torch.tensor(indices, device=self.device)
+            
+        neg_mask = (labels == 0)
+        pos_mask = (labels == 1)
+        
+        neg_indices = indices[neg_mask]
+        pos_indices = indices[pos_mask]
         
         if len(pos_indices) == 0 or len(neg_indices) == 0:
             return indices
             
-        indices_balanced = np.random.choice(len(neg_indices), size=len(pos_indices), replace=True)
-        neg_indices = neg_indices[indices_balanced]
+        n = len(pos_indices)
+        # Use torch for random selection to stay on device
+        perm = torch.randperm(len(neg_indices), device=self.device)[:n]
+        neg_indices_balanced = neg_indices[perm]
 
-        return np.concatenate(
-            [pos_indices, neg_indices]
-        )
+        return torch.cat([pos_indices, neg_indices_balanced])
 
     def save_graph(self, g, task):
         with open(f'{self.checkpoint_manager.path}/graph_{task}.pkl', 'wb') as outp:
